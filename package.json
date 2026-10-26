@@ -1,0 +1,53 @@
+{
+  "name": "aquawise-shrimpscan-line-bot",
+  "version": "0.1.0",
+  "description": "LINE bot and LIFF app for Shrimp Scan (working name; the owner picks the product name)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "typecheck:liff": "cd liff-app && pnpm run typecheck",
+    "lint": "eslint src scripts && pnpm run lint:liff",
+    "lint:liff": "cd liff-app && pnpm run lint",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "liff:install": "cd liff-app && pnpm install",
+    "liff:dev": "cd liff-app && pnpm run dev",
+    "liff:mock": "cd liff-app && pnpm run mock",
+    "liff:build": "cd liff-app && pnpm run build",
+    "prebuild": "pnpm run liff:build",
+    "line:whoami": "tsx scripts/line-whoami.ts",
+    "webhook:test": "tsx scripts/send-test-webhook.ts"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^9.4.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.3.2",
+    "helmet": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^24.0.0",
+    "@types/supertest": "^6.0.2",
+    "@typescript-eslint/eslint-plugin": "^8.58.1",
+    "@typescript-eslint/parser": "^8.58.1",
+    "dotenv": "^16.4.7",
+    "eslint": "^9.39.4",
+    "supertest": "^7.2.2",
+    "tsx": "^4.19.2",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.6"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.0.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

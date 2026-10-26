@@ -1,0 +1,30 @@
+/** Every LIFF path in one place. All live under /liff/app (the LIFF endpoint is /liff/). */
+const A = '/liff/app'
+
+export const P = {
+  home: A,
+  start: `${A}/start`,
+  join: (code: string) => `${A}/join?invite=${encodeURIComponent(code)}`,
+  scan: (pondId?: string) => (pondId ? `${A}/scan?pond=${encodeURIComponent(pondId)}` : `${A}/scan`),
+  pickPond: `${A}/pick-pond`,
+  today: `${A}/today`,
+  inbox: `${A}/inbox`,
+  measure: (scanIds: string[]) => `${A}/inbox/measure?ids=${scanIds.map(encodeURIComponent).join(',')}`,
+  overview: `${A}/overview`,
+  ponds: `${A}/ponds`,
+  pond: (id: string) => `${A}/ponds/${encodeURIComponent(id)}`,
+  stocking: (id: string) => `${A}/ponds/${encodeURIComponent(id)}/stocking`,
+  history: (id: string) => `${A}/ponds/${encodeURIComponent(id)}/history`,
+  fix: (scanId: string) => `${A}/scans/${encodeURIComponent(scanId)}/fix`,
+  settings: `${A}/settings`,
+  nets: `${A}/nets`,
+  people: `${A}/people`,
+  invite: `${A}/people/invite`,
+  permissions: (id: string) => `${A}/people/${encodeURIComponent(id)}/permissions`,
+  print: `${A}/print`,
+  printFarm: `${A}/print/farm`,
+  printPond: (id: string) => `${A}/print/pond/${encodeURIComponent(id)}`,
+  printPaper: (sheet: 'farm' | string) => `${A}/print/paper?sheet=${encodeURIComponent(sheet)}`,
+  me: `${A}/me`,
+  closed: (said?: string) => `${A}/closed${said ? `?said=${encodeURIComponent(said)}` : ''}`,
+} as const

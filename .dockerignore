@@ -1,0 +1,17 @@
+# Keep the build context small and secret-free.
+.git
+.github
+**/node_modules
+dist
+public/liff
+build-id
+coverage
+**/.env*
+**/*.log
+**/*.tsbuildinfo
+docs
+*.md
+liff-app/tests
+liff-app/dev-mock/fixtures
+.omc
+.omx

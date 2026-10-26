@@ -1,0 +1,31 @@
+name: Notify ecosystem umbrella
+
+# The only GitHub Actions workflow in this repo. CI is the Cloud Build PR gate
+# (cloudbuild.pr.yaml), which keeps Actions minutes at zero.
+#
+# Tells aquawise-tech/aquawise-ecosystem that launch-prep moved, so the
+# umbrella bumps its submodule pin. Needs the ECOSYSTEM_BOT_PAT secret (the
+# same PAT line-bot uses; a fine-grained PAT must list this repo).
+
+on:
+  push:
+    branches:
+      - launch-prep
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    # Billing guard: fail fast instead of idling to the 6-hour default.
+    timeout-minutes: 5
+    steps:
+      - name: Send repository_dispatch to ecosystem umbrella
+        env:
+          GH_TOKEN: ${{ secrets.ECOSYSTEM_BOT_PAT }}
+        run: |
+          gh api \
+            -X POST \
+            /repos/aquawise-tech/aquawise-ecosystem/dispatches \
+            -f event_type=submodule-updated \
+            -F "client_payload[component]=${{ github.event.repository.name }}" \
+            -F "client_payload[sha]=${{ github.sha }}" \
+            -F "client_payload[branch]=${{ github.ref_name }}"

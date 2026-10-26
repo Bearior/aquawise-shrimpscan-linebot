@@ -1,0 +1,10 @@
+# LF everywhere: Cloud Build runs on Linux, and this repo is also edited on
+# Windows. Binary assets are left alone.
+* text=auto eol=lf
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary

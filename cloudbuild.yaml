@@ -1,0 +1,126 @@
+# Cloud Build: test, build, push, deploy. Two push triggers use this file:
+#   <slug>-staging  push to ^launch-prep$  _SERVICE=aquawise-<slug>-staging  _NODE_ENV=staging
+#   <slug>-prod     push to ^main$         _SERVICE=aquawise-<slug>          (_NODE_ENV left at production)
+# Both pass _TAG=$COMMIT_SHA and _RUNTIME_SA. See docs/SETUP.md.
+#
+# A PUSH TO EITHER BRANCH IS A DEPLOY. Step 1 is the gate: steps run in order
+# and a non-zero exit stops the build, so a red test means no image and no
+# deploy. cloudbuild.pr.yaml runs the same gate on pull requests.
+#
+# ⚠ STEP 1 MUST MATCH cloudbuild.pr.yaml. Two definitions of "what must pass"
+# drift. Change both together.
+
+substitutions:
+  # ⚠ The image tag is a substitution, not $COMMIT_SHA. $COMMIT_SHA is empty for
+  # a manual `gcloud builds submit` or a manual-invocation trigger, which would
+  # make the untaggable reference ".../<service>:" and fail the build. Push
+  # triggers pass _TAG=$COMMIT_SHA; everything else gets a usable default.
+  _TAG: manual
+  # Defaults to STAGING on purpose: a trigger must name the prod service
+  # explicitly, so a mis-wired trigger deploys to staging, not to farmers.
+  _SERVICE: aquawise-shrimpscan-line-bot-staging
+  # ⚠ THIS ONE DEFAULTS TO PRODUCTION, opposite to _SERVICE, and the asymmetry
+  # is deliberate: the two have opposite dangerous directions. Anything that
+  # self-enables on NODE_ENV=staging would switch on for farmers if `staging`
+  # leaked into prod; `production` leaking into staging only leaves staging
+  # dark. line-bot lost voice capture on staging for 12 hours (2026-08-27) when
+  # this was one literal for both. The staging trigger passes _NODE_ENV=staging.
+  #
+  # Any future STAGING-ONLY BUILD FLAG (a VITE_* switch) is derived from this
+  # value in the build step, and its safe direction is OFF: anything that is
+  # not exactly `staging` builds it dark.
+  _NODE_ENV: production
+  # The runtime service account. Required: the deploy refuses to run without
+  # it, so a revision never falls back to the default compute account.
+  _RUNTIME_SA: ''
+  _REGION: asia-southeast1
+  # 0 keeps a quiet service free. Set prod to 1 at launch (docs/SETUP.md E).
+  _MIN_INSTANCES: '0'
+  _MAX_INSTANCES: '2'
+
+steps:
+  # ── 1. THE GATE ────────────────────────────────────────────────────────────
+  # Two projects, two lockfiles, no pnpm workspace: the root install does not
+  # reach liff-app.
+  - id: test
+    name: node:24
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        corepack enable
+        pnpm install --frozen-lockfile
+        (cd liff-app && pnpm install --frozen-lockfile)
+
+        pnpm run typecheck
+        pnpm run typecheck:liff
+        pnpm run lint
+
+        pnpm run test:run
+        (cd liff-app && pnpm run test:run)
+
+  # ── 2. BUILD ───────────────────────────────────────────────────────────────
+  # Tagged with the commit so a revision traces back to a SHA. On the first
+  # build the cache pull fails and Docker carries on cold, hence `|| true`.
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        IMG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE}"
+        docker pull "$$IMG:latest" || true
+        docker build \
+          --cache-from "$$IMG:latest" \
+          -t "$$IMG:${_TAG}" \
+          -t "$$IMG:latest" \
+          .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        IMG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE}"
+        docker push "$$IMG:${_TAG}"
+        docker push "$$IMG:latest"
+
+  # ── 3. DEPLOY ──────────────────────────────────────────────────────────────
+  # ⚠ --update-env-vars, NEVER --set-env-vars. --set-env-vars REPLACES every env
+  # var on the service, wiping LIFF_ID, LIFF_CHANNEL_ID and anything else set
+  # by hand. Secrets are attached once by hand (docs/SETUP.md C.4) and a deploy
+  # keeps them.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        if [ -z "${_RUNTIME_SA}" ]; then
+          echo "_RUNTIME_SA is empty: refusing to deploy on the default compute service account." >&2
+          exit 1
+        fi
+        gcloud run deploy "${_SERVICE}" \
+          --image "${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE}:${_TAG}" \
+          --region "${_REGION}" \
+          --platform managed \
+          --service-account "${_RUNTIME_SA}" \
+          --min-instances "${_MIN_INSTANCES}" \
+          --max-instances "${_MAX_INSTANCES}" \
+          --update-env-vars "NODE_ENV=${_NODE_ENV}"
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE}:${_TAG}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE}:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  # Default machine on purpose (it has the free tier). line-bot needs
+  # E2_HIGHCPU_8 only because it runs about 8,600 tests.
+
+timeout: '1200s'

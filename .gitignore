@@ -1,0 +1,22 @@
+# dependencies and build output
+node_modules/
+dist/
+public/liff/
+build-id
+coverage/
+*.tsbuildinfo
+*.log
+
+# env files hold secrets; only the examples and the mock's file are tracked
+.env*
+!.env.example
+!.env.staging.example
+!liff-app/.env.example
+!liff-app/.env.mock
+
+# local screenshots from `pnpm shots`
+liff-app/tests/visual/out/
+
+# local agent state
+.omc/
+.omx/

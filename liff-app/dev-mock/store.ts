@@ -1,0 +1,1301 @@
+/**
+ * The mock farm: in-memory state behind `pnpm mock`, typed against the LIFF
+ * contract (src/api/types.ts), so a contract change breaks this file at
+ * `tsc` time instead of drifting.
+ *
+ * One store per dev server. Writes (a scan saved, a ยอ added, an invite) stick
+ * until the server restarts. Who is calling comes from the persona header.
+ */
+import type {
+  AskAgainReason,
+  FarmCandidate,
+  FarmRef,
+  FarmSheet,
+  FixResponse,
+  GrowthPoint,
+  InboxResponse,
+  Invite,
+  InviteAccept,
+  InviteCreate,
+  InvitePreview,
+  MeasureResponse,
+  Member,
+  MembersResponse,
+  Net,
+  NetCreate,
+  NetEdit,
+  NetShape,
+  NotifySettings,
+  Overview,
+  PermissionKey,
+  Permissions,
+  PermissionsPatch,
+  PermissionsResponse,
+  PondDetail,
+  PondScansResponse,
+  PondSheet,
+  PondStatus,
+  PondTile,
+  PondsResponse,
+  Pt,
+  QueueRow,
+  Role,
+  SaveResponse,
+  Scan,
+  ScanResult,
+  ScanSummary,
+  Session,
+  SettingsResponse,
+  StartRequest,
+  Stocking,
+  TodayResponse,
+} from '../src/api/types'
+import { NET_CM_MAX, NET_CM_MIN } from '../src/api/types'
+import { addDays, daysBetween, fmtDay, fmtDayYear, fmtTime, pondRange } from '../src/lib/format'
+import { centredGuess, fitEllipse, insideEllipse } from '../src/lib/rim'
+import { isLighter, weightStats } from '../src/lib/sizes'
+import { ACTIVITY, CANDIDATE, DOTS, F10_HISTORY, FIXED, FIXTURE_ASPECT, GUESS, NOTES, PEOPLE, STOCKED, TODAY, Z2, at, nowIso } from './story'
+
+export type Persona = 'owner' | 'worker' | 'new' | 'fresh'
+
+export class MockError extends Error {
+  readonly status: number
+  constructor(status: number, code: string) {
+    super(code)
+    this.status = status
+  }
+}
+
+/* ---------- small helpers ---------- */
+
+function hash(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
+  return h >>> 0
+}
+
+/** Seeded random, so every restart tells the same story. */
+function rng(seed: string): () => number {
+  let a = hash(seed)
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function normal(r: () => number): number {
+  const u = Math.max(1e-9, r())
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r())
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+/** Length from weight, the usual whiteleg curve: W = 0.0086 L³. */
+function lengthOf(g: number): number {
+  return round1(Math.cbrt(g / 0.0086))
+}
+
+function ellipseArea(rim: Pt[]): number {
+  const e = fitEllipse(rim)
+  return e ? Math.PI * e.rx * e.ry : 0
+}
+
+/**
+ * How weight moves with the rim: a ring drawn wider than the floor edge makes
+ * every shrimp look smaller. Calibrated so the fixture's wide guess reads
+ * 13.9 g where the true rim reads 17.2 g (F10 in the story, W21 to E5).
+ */
+const RIM_EXP = Math.log(13.9 / 17.2) / Math.log(ellipseArea(FIXED) / ellipseArea(GUESS))
+
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+/** The fixture photos in dev-mock/fixtures, by name. */
+const FIXTURE_SIZE: Record<string, { width: number; height: number }> = {
+  yor: { width: 520, height: 461 },
+  'ok-good': { width: 260, height: 231 },
+  'bad-cut': { width: 260, height: 231 },
+}
+
+/* ---------- state ---------- */
+
+interface MPond {
+  id: string
+  code: string
+  zone: string
+  /** Today's real average weight: what a well-placed rim measures. */
+  trueAbw: number
+  gPerDay: number
+  kind: 'r' | 'g' | 'w' | 'u' | 'm'
+  cv: number
+  split: boolean
+  stockedOn: string | null
+  count: number | null
+  survival: number | null
+  netId: string | null
+  /** Saved weights before the scans in `scans`, oldest first. */
+  past: { date: string; abw: number }[]
+  note: { by: string; at: string; text: string } | null
+}
+
+interface MMember {
+  id: string
+  name: string
+  role: Role
+  pondIds: string[]
+  joined: string
+  perms: Permissions
+}
+
+interface MNet {
+  id: string
+  shape: NetShape
+  cm: number
+  addedBy: string
+  addedOn: string
+  isFarmDefault: boolean
+}
+
+interface MScan {
+  id: string
+  pondId: string
+  photo: string
+  width: number
+  height: number
+  rimGuess: Pt[]
+  /** The rim on the floor edge, for the mock's weight maths. */
+  truthRim: Pt[]
+  dots: Pt[] | null
+  by: string
+  at: string
+  status: Scan['status']
+  result: ScanResult | null
+  measuredBy: string | null
+  measuredById: string | null
+  remeasures: number
+  savedAt: string | null
+  fixed: ScanSummary['fixed']
+  quality: 'ok' | 'maybe_cut' | 'dark' | 'blurry'
+  askedReason: AskAgainReason | null
+}
+
+interface MInvite {
+  code: string
+  role: Exclude<Role, 'owner'>
+  pondIds: string[]
+  createdOn: string
+  status: 'open' | 'used' | 'cancelled'
+}
+
+interface MFarm {
+  id: string
+  name: string
+  ownerId: string
+  targetPerKg: number
+  credits: number
+  ponds: MPond[]
+  members: MMember[]
+  nets: MNet[]
+  scans: MScan[]
+  invites: MInvite[]
+  notify: NotifySettings
+  activity: { who: string; what: string; when: string }[]
+}
+
+const DEFAULTS: Record<Role, Permissions> = {
+  owner: { scanSelf: true, editOthers: true, measureInbox: true, farmOverview: true, printSheet: true, remindMissing: true },
+  manager: { scanSelf: true, editOthers: true, measureInbox: true, farmOverview: true, printSheet: true, remindMissing: false },
+  worker: { scanSelf: true, editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, remindMissing: true },
+}
+
+/** Photos served at /mock-photos/:id: fixture names, or bytes uploaded in this run. */
+export const photos = new Map<string, { bytes: Buffer; type: string }>()
+
+/* ---------- seeding ---------- */
+
+function issueOf(p: MPond): string | null {
+  if (p.kind === 'm') return 'ยังไม่ส่งรูปยอ'
+  if (p.kind === 'w') return `ไซส์เริ่มไม่เสมอ (CV ${Math.round(p.cv * 100)}%)`
+  if (p.kind === 'u') return p.gPerDay <= 0.2 ? `โตช้ามาก วันละ ${p.gPerDay.toFixed(2)} ก.` : 'แตกไซส์ 2 รุ่น และโตช้าลง'
+  return null
+}
+
+/** Weights back in time on a power curve that ends at today's weight and slope. */
+function curve(abw: number, gPerDay: number, age: number, day: number): number {
+  const p = Math.min(3, Math.max(1, (gPerDay * age) / abw))
+  return Math.max(0.3, abw * Math.pow(day / age, p))
+}
+
+function shrimpFor(seed: string, abw: number, cv: number, split: boolean, rim: Pt[], dots: Pt[] | null): ScanResult['shrimp'] {
+  const r = rng(seed)
+  const n = 64
+  let grams = Array.from({ length: n }, (_, i) => {
+    const centre = split ? abw * (i % 2 ? 0.8 : 1.2) : abw
+    return Math.max(abw * 0.4, centre * (1 + normal(r) * (split ? cv * 0.55 : cv)))
+  })
+  const mean = grams.reduce((a, b) => a + b, 0) / n
+  grams = grams.map((g) => round1((g * abw) / mean)).sort((a, b) => a - b)
+  let pts: Pt[]
+  if (dots && dots.length >= n) {
+    pts = dots.slice(0, n)
+  } else {
+    const e = fitEllipse(rim) ?? fitEllipse(centredGuess())!
+    pts = []
+    while (pts.length < n) {
+      const t = 2 * Math.PI * r()
+      const k = Math.sqrt(r()) * 0.86
+      const p = { x: e.cx + Math.cos(t) * e.rx * k, y: e.cy + Math.sin(t) * e.ry * k }
+      if (insideEllipse(e, p)) pts.push(p)
+    }
+  }
+  return grams.map((g, i) => ({ x: Math.round(pts[i]!.x * 1000) / 1000, y: Math.round(pts[i]!.y * 1000) / 1000, g }))
+}
+
+function seedFarm(): MFarm {
+  const ponds: MPond[] = []
+  const members: MMember[] = []
+  for (const [zone, , rows] of Z2) {
+    rows.split(';').forEach((row, i) => {
+      const [, abw, gpd, , kind] = row.split('|') as [string, string, string, string, string]
+      const code = `${zone}${String(i + 1).padStart(2, '0')}`
+      const trueAbw = Number(abw)
+      const gPerDay = Number(gpd)
+      const age = Math.max(35, Math.round(79 - (24.6 - trueAbw) / 0.3))
+      const r = rng(code)
+      const k = kind as MPond['kind']
+      ponds.push({
+        id: `p-${code.toLowerCase()}`,
+        code,
+        zone,
+        trueAbw,
+        gPerDay,
+        kind: k,
+        cv: k === 'w' ? 0.15 : k === 'u' && gPerDay > 0.2 ? 0.2 : 0.09 + r() * 0.02,
+        split: k === 'u' && gPerDay > 0.2,
+        stockedOn: addDays(TODAY, -age),
+        count: STOCKED[code] ?? 180_000 + Math.round(r() * 8) * 10_000,
+        survival: 0.8,
+        netId: zone === 'E' ? 'net-75' : null,
+        past: [],
+        note: NOTES[code] ? { by: NOTES[code]!.by, at: at(TODAY, NOTES[code]!.hhmm), text: NOTES[code]!.text } : null,
+      })
+    })
+  }
+  for (const p of PEOPLE) {
+    members.push({
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      pondIds: ponds.filter((x) => p.zones.includes(x.zone)).map((x) => x.id),
+      joined: p.joined,
+      perms: { ...DEFAULTS[p.role], ...(p.id === 'm-phon' ? { printSheet: true } : {}) },
+    })
+  }
+  const farm: MFarm = {
+    id: 'farm-saina',
+    name: 'ฟาร์มสายน้ำ',
+    ownerId: 'm-wichai',
+    targetPerKg: 40,
+    credits: 47,
+    ponds,
+    members,
+    nets: [
+      { id: 'net-82', shape: 'round', cm: 82, addedBy: 'พี่วิชัย', addedOn: '2026-10-20', isFarmDefault: true },
+      { id: 'net-75', shape: 'round', cm: 75, addedBy: 'บังดล', addedOn: '2026-10-19', isFarmDefault: false },
+    ],
+    scans: [],
+    invites: [{ code: '7K2P9QX', role: 'worker', pondIds: ponds.filter((p) => p.zone === 'F').map((p) => p.id), createdOn: TODAY, status: 'open' }],
+    notify: { photoIn: true, morningSummary: true, morningSheet: false, nearTarget: true, remindWorkers: true },
+    activity: [...ACTIVITY],
+  }
+
+  // History: saved scans 15, 10 and 5 days back, and today for ponds whose photo came in and was measured.
+  const inbox: Record<string, { photo: string; hhmm: string; quality: MScan['quality'] }> = {
+    F09: { photo: 'yor', hhmm: '06:12', quality: 'ok' },
+    F07: { photo: 'ok-good', hhmm: '06:15', quality: 'ok' },
+    F08: { photo: 'bad-cut', hhmm: '06:18', quality: 'maybe_cut' },
+  }
+  for (const p of ponds) {
+    const age = daysBetween(p.stockedOn!, TODAY)
+    const by =
+      members.find((m) => m.role === 'worker' && m.pondIds.includes(p.id)) ??
+      members.find((m) => m.role === 'manager' && m.pondIds.includes(p.id)) ??
+      members[0]!
+    const missing = p.kind === 'm' || p.code === 'F10'
+    const doneToday = !missing && !inbox[p.code]
+    const days = [-15, -10, -5, ...(doneToday ? [0] : [])]
+    for (const back of [-35, -28, -21]) {
+      if (age + back >= 7) p.past.push({ date: addDays(TODAY, back), abw: round1(curve(p.trueAbw, p.gPerDay, age, age + back)) })
+    }
+    days.forEach((back, i) => {
+      const date = addDays(TODAY, back)
+      let abw = round1(back === 0 ? p.trueAbw : curve(p.trueAbw, p.gPerDay, age, age + back))
+      if (p.code === 'F10') abw = F10_HISTORY[i]?.[1] ?? abw
+      const hhmm = back === 0 ? (p.code === 'A04' ? '07:28' : `06:${String(5 + (hash(p.code) % 50)).padStart(2, '0')}`) : '06:30'
+      farm.scans.push(savedScan(farm, p, date, hhmm, abw, by))
+    })
+    if (inbox[p.code]) {
+      const x = inbox[p.code]!
+      const fixture = x.photo === 'yor'
+      const size = FIXTURE_SIZE[x.photo]!
+      farm.scans.push({
+        id: `s-${p.code.toLowerCase()}-in`,
+        pondId: p.id,
+        photo: x.photo,
+        width: size.width,
+        height: size.height,
+        rimGuess: fixture ? GUESS : centredGuess(),
+        truthRim: fixture ? FIXED : centredGuess(),
+        dots: fixture ? DOTS : null,
+        by: 'ช่างเอก',
+        at: at(TODAY, x.hhmm),
+        status: 'waiting',
+        result: null,
+        measuredBy: null,
+        measuredById: null,
+        remeasures: 0,
+        savedAt: null,
+        fixed: null,
+        quality: x.quality,
+        askedReason: null,
+      })
+    }
+  }
+  return farm
+}
+
+/** Saved history uses the full fixture: its rim and its 64 shrimp line up with the photo. */
+function savedScan(farm: MFarm, p: MPond, date: string, hhmm: string, abw: number, measurer: MMember): MScan {
+  const net = netFor(farm, p)
+  const id = `s-${p.code.toLowerCase()}-${date.slice(5).replace('-', '')}`
+  const shrimp = shrimpFor(id, abw, p.cv, p.split, FIXED, DOTS)
+  const stats = weightStats(shrimp.map((s) => s.g))
+  return {
+    id,
+    pondId: p.id,
+    photo: 'yor',
+    width: FIXTURE_SIZE.yor!.width,
+    height: FIXTURE_SIZE.yor!.height,
+    rimGuess: GUESS,
+    truthRim: FIXED,
+    dots: DOTS,
+    by: measurer.name,
+    at: at(date, hhmm),
+    status: 'saved',
+    result: {
+      abw,
+      perKg: Math.round(1000 / abw),
+      lengthCm: lengthOf(abw),
+      count: shrimp.length,
+      cv: round2(stats.cv),
+      shrimp,
+      rim: FIXED,
+      net: { id: net.id, shape: net.shape, cm: net.cm },
+      measuredAt: at(date, hhmm),
+      remeasuresLeft: 3,
+      previous: null,
+    },
+    measuredBy: measurer.name,
+    measuredById: measurer.id,
+    remeasures: 0,
+    savedAt: at(date, hhmm),
+    fixed: null,
+    quality: 'ok',
+    askedReason: null,
+  }
+}
+
+function netFor(farm: MFarm, p: MPond): MNet {
+  return farm.nets.find((n) => n.id === p.netId) ?? farm.nets.find((n) => n.isFarmDefault) ?? farm.nets[0] ?? { id: 'net-none', shape: 'round', cm: 82, addedBy: '', addedOn: TODAY, isFarmDefault: true }
+}
+
+function blankFarm(id: string, name: string, owner: { id: string; name: string }, ponds: { code: string; zone: string }[]): MFarm {
+  const mp: MPond[] = ponds.map((x) => ({
+    id: `${id}-${x.code.toLowerCase()}`,
+    code: x.code,
+    zone: x.zone,
+    trueAbw: 9 + (hash(x.code) % 60) / 10,
+    gPerDay: 0.3,
+    kind: 'g',
+    cv: 0.1,
+    split: false,
+    stockedOn: null,
+    count: null,
+    survival: null,
+    netId: null,
+    past: [],
+    note: null,
+  }))
+  return {
+    id,
+    name,
+    ownerId: owner.id,
+    targetPerKg: 40,
+    credits: 50,
+    ponds: mp,
+    members: [{ id: owner.id, name: owner.name, role: 'owner', pondIds: mp.map((p) => p.id), joined: TODAY, perms: { ...DEFAULTS.owner } }],
+    nets: [],
+    scans: [],
+    invites: [],
+    notify: { photoIn: true, morningSummary: true, morningSheet: false, nearTarget: true, remindWorkers: true },
+    activity: [],
+  }
+}
+
+/* ---------- the store ---------- */
+
+interface Who {
+  name: string
+  memberId: string
+  farmId: string | null
+}
+
+export class Store {
+  farms = new Map<string, MFarm>()
+  people: Record<Persona, Who> = {
+    owner: { name: 'พี่วิชัย', memberId: 'm-wichai', farmId: 'farm-saina' },
+    worker: { name: 'ช่างเอก', memberId: 'm-ek', farmId: 'farm-saina' },
+    new: { name: 'พี่สมชาย', memberId: 'm-somchai', farmId: null },
+    fresh: { name: 'พี่มานพ', memberId: 'm-manop', farmId: null },
+  }
+  seq = 0
+
+  constructor() {
+    const f = seedFarm()
+    this.farms.set(f.id, f)
+  }
+
+  private nextId(prefix: string): string {
+    this.seq += 1
+    return `${prefix}-${Date.now().toString(36)}${this.seq}`
+  }
+
+  /* ----- who ----- */
+
+  private ctx(persona: Persona): { who: Who; farm: MFarm; me: MMember } {
+    const who = this.people[persona]
+    const farm = who.farmId ? this.farms.get(who.farmId) : undefined
+    if (!farm) throw new MockError(409, 'no_farm')
+    const me = farm.members.find((m) => m.id === who.memberId)
+    if (!me) throw new MockError(403, 'not_allowed')
+    return { who, farm, me }
+  }
+
+  private need(me: MMember, key: PermissionKey): void {
+    if (!me.perms[key]) throw new MockError(403, 'not_allowed')
+  }
+
+  private ownerOnly(me: MMember): void {
+    if (me.role !== 'owner') throw new MockError(403, 'not_allowed')
+  }
+
+  private pond(farm: MFarm, id: string): MPond {
+    const p = farm.ponds.find((x) => x.id === id)
+    if (!p) throw new MockError(404, 'not_found')
+    return p
+  }
+
+  private scan(farm: MFarm, id: string): MScan {
+    const s = farm.scans.find((x) => x.id === id)
+    if (!s) throw new MockError(404, 'not_found')
+    return s
+  }
+
+  private farmRef(farm: MFarm): FarmRef {
+    return {
+      id: farm.id,
+      name: farm.name,
+      pondCount: farm.ponds.length,
+      zoneCount: new Set(farm.ponds.map((p) => p.zone)).size,
+      memberCount: farm.members.length,
+      ownerName: farm.members.find((m) => m.id === farm.ownerId)?.name ?? '',
+      targetPerKg: farm.targetPerKg,
+    }
+  }
+
+  session(persona: Persona): Session {
+    const who = this.people[persona]
+    const farm = who.farmId ? this.farms.get(who.farmId) : undefined
+    const me = farm?.members.find((m) => m.id === who.memberId)
+    const candidate: FarmCandidate | null =
+      !farm && persona === 'new'
+        ? {
+            id: CANDIDATE.id,
+            name: CANDIDATE.name,
+            pondCount: CANDIDATE.zones.length * CANDIDATE.perZone,
+            zoneCount: CANDIDATE.zones.length,
+            memberCount: CANDIDATE.members,
+            source: `จากบัญชีน้องน้ำของ${who.name}`,
+          }
+        : null
+    return {
+      user: { name: me?.name ?? who.name },
+      farm: farm && me ? this.farmRef(farm) : null,
+      role: me?.role ?? null,
+      permissions: me?.perms ?? { ...DEFAULTS.worker, scanSelf: false },
+      pondIds: me?.pondIds ?? [],
+      creditsLeft: farm?.credits ?? 0,
+      today: TODAY,
+      candidate,
+      env: 'mock',
+    }
+  }
+
+  start(persona: Persona, body: StartRequest): Session {
+    const who = this.people[persona]
+    if (who.farmId) return this.session(persona)
+    let farm: MFarm
+    if ('useFarmId' in body) {
+      if (persona !== 'new' || body.useFarmId !== CANDIDATE.id) throw new MockError(404, 'not_found')
+      const ponds = CANDIDATE.zones.flatMap((z) => Array.from({ length: CANDIDATE.perZone }, (_, i) => ({ code: `${z}${String(i + 1).padStart(2, '0')}`, zone: z })))
+      farm = blankFarm(CANDIDATE.id, CANDIDATE.name, { id: who.memberId, name: who.name }, ponds)
+    } else {
+      const name = body.name.trim()
+      if (!name || !body.ponds.length) throw new MockError(400, 'bad_request')
+      const ponds = body.ponds.map((code) => ({ code, zone: /^[A-Za-z]+/.exec(code)?.[0]?.toUpperCase() ?? '1' }))
+      farm = blankFarm(this.nextId('farm'), name, { id: who.memberId, name: who.name }, ponds)
+    }
+    this.farms.set(farm.id, farm)
+    who.farmId = farm.id
+    return this.session(persona)
+  }
+
+  setTarget(persona: Persona, targetPerKg: number): Session {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    if (![30, 35, 40, 45, 50].includes(targetPerKg)) throw new MockError(400, 'bad_request')
+    farm.targetPerKg = targetPerKg
+    return this.session(persona)
+  }
+
+  me(persona: Persona): { ok: boolean; env: string; user: string } {
+    return { ok: true, env: 'mock', user: this.people[persona].name }
+  }
+
+  /* ----- ponds ----- */
+
+  private saved(farm: MFarm, pondId: string): MScan[] {
+    return farm.scans
+      .filter((s) => s.pondId === pondId && s.status === 'saved' && s.result)
+      .sort((a, b) => (a.savedAt! < b.savedAt! ? 1 : -1))
+  }
+
+  private caretaker(farm: MFarm, p: MPond): string | null {
+    const w = farm.members.find((m) => m.role === 'worker' && m.pondIds.includes(p.id))
+    const m = farm.members.find((x) => x.role === 'manager' && x.pondIds.includes(p.id))
+    return (w ?? m)?.name ?? null
+  }
+
+  private photoToday(farm: MFarm, p: MPond): boolean {
+    return farm.scans.some((s) => s.pondId === p.id && s.status !== 'asked_again' && dayOf(s.at) === TODAY)
+  }
+
+  tile(farm: MFarm, p: MPond, me?: MMember): PondTile {
+    const last = this.saved(farm, p.id)[0]
+    const abw = last?.result?.abw ?? null
+    const targetG = 1000 / farm.targetPerKg
+    const photoToday = this.photoToday(farm, p)
+    const daysToTarget = abw !== null ? Math.max(0, Math.ceil(round2((targetG - abw) / p.gPerDay))) : null
+    const reachOn = daysToTarget !== null ? addDays(TODAY, daysToTarget) : null
+    let status: PondStatus
+    if (!photoToday) status = 'missing'
+    else if (p.kind === 'u') status = 'urgent'
+    else if (p.kind === 'w') status = 'watch'
+    else if (daysToTarget !== null && daysToTarget <= 5) status = 'ready'
+    else status = 'good'
+    return {
+      id: p.id,
+      code: p.code,
+      zone: p.zone,
+      caretaker: this.caretaker(farm, p),
+      perKg: abw !== null ? Math.round(1000 / abw) : null,
+      abw,
+      gPerDay: abw !== null ? p.gPerDay : null,
+      reachOn,
+      daysToTarget,
+      status,
+      photoToday,
+      mine: me ? me.pondIds.includes(p.id) : false,
+      issue: status === 'missing' ? 'ยังไม่ส่งรูปยอ' : status === 'urgent' || status === 'watch' ? issueOf(p) : null,
+      ageDays: p.stockedOn ? daysBetween(p.stockedOn, TODAY) : null,
+      netId: farm.nets.length ? netFor(farm, p).id : null,
+    }
+  }
+
+  ponds(persona: Persona): PondsResponse {
+    const { farm, me } = this.ctx(persona)
+    const tiles = farm.ponds.map((p) => this.tile(farm, p, me))
+    const zones = [...new Set(farm.ponds.map((p) => p.zone))].map((zone) => {
+      const zt = tiles.filter((t) => t.zone === zone)
+      return { zone, caretaker: zt[0]?.caretaker ?? null, total: zt.length, photoToday: zt.filter((t) => t.photoToday).length }
+    })
+    return { zones, ponds: tiles }
+  }
+
+  private summary(farm: MFarm, s: MScan, me: MMember): ScanSummary {
+    const r = s.result!
+    return {
+      scanId: s.id,
+      date: dayOf(s.at),
+      at: s.at,
+      abw: r.abw,
+      perKg: r.perKg,
+      cv: r.cv,
+      photoUrl: photoUrl(s.photo),
+      photoBy: s.by,
+      measuredBy: s.measuredBy ?? s.by,
+      fixed: s.fixed,
+      lighter: isLighter(r.abw, r.previous ?? this.previousOf(farm, s)),
+      canFix: this.canFix(s, me),
+    }
+  }
+
+  private canFix(s: MScan, me: MMember): boolean {
+    return Boolean(s.result) && (s.measuredById === me.id || me.perms.editOthers)
+  }
+
+  private previousOf(farm: MFarm, s: MScan): { abw: number; date: string } | null {
+    const before = farm.scans
+      .filter((x) => x.pondId === s.pondId && x.id !== s.id && x.status === 'saved' && x.result && x.at < s.at)
+      .sort((a, b) => (a.at < b.at ? 1 : -1))[0]
+    return before?.result ? { abw: before.result.abw, date: dayOf(before.at) } : null
+  }
+
+  private growth(farm: MFarm, p: MPond): GrowthPoint[] {
+    const start = p.stockedOn
+    const pts = [
+      ...p.past,
+      ...this.saved(farm, p.id)
+        .reverse()
+        .map((s) => ({ date: dayOf(s.at), abw: s.result!.abw })),
+    ]
+    return pts.map((x) => ({ date: x.date, abw: x.abw, day: start ? daysBetween(start, x.date) : 0 }))
+  }
+
+  pondDetail(persona: Persona, id: string): PondDetail {
+    const { farm, me } = this.ctx(persona)
+    const p = this.pond(farm, id)
+    const tile = this.tile(farm, p, me)
+    const last = this.saved(farm, p.id)[0]
+    const idx = farm.ponds.indexOf(p)
+    const prev = farm.ponds[idx - 1] ?? null
+    const next = farm.ponds[idx + 1] ?? null
+    const growth = this.growth(farm, p)
+    const chance: Record<PondStatus, number> = { ready: 0.92, good: 0.8, watch: 0.6, urgent: 0.35, missing: 0.7 }
+    return {
+      pond: tile,
+      growth,
+      latest: last ? this.summary(farm, last, me) : null,
+      latestShrimpGrams: last?.result?.shrimp.map((s) => s.g) ?? [],
+      stocking: { stockedOn: p.stockedOn, count: p.count, survival: p.survival },
+      tonnesNow: tile.abw !== null && p.count ? round1((p.count * (p.survival ?? 0.8) * tile.abw) / 1e6) : null,
+      note: p.note,
+      prevId: prev?.id ?? null,
+      prevCode: prev?.code ?? null,
+      nextId: next?.id ?? null,
+      nextCode: next?.code ?? null,
+      onTimeChance: growth.length >= 2 ? chance[tile.status] : null,
+    }
+  }
+
+  pondScans(persona: Persona, id: string): PondScansResponse {
+    const { farm, me } = this.ctx(persona)
+    const p = this.pond(farm, id)
+    return { pond: this.tile(farm, p, me), scans: this.saved(farm, p.id).map((s) => this.summary(farm, s, me)) }
+  }
+
+  stocking(persona: Persona, id: string): Stocking {
+    const { farm } = this.ctx(persona)
+    const p = this.pond(farm, id)
+    return { stockedOn: p.stockedOn, count: p.count, survival: p.survival }
+  }
+
+  saveStocking(persona: Persona, id: string, body: Stocking): Stocking {
+    const { farm, me } = this.ctx(persona)
+    if (me.role === 'worker') throw new MockError(403, 'not_allowed')
+    const p = this.pond(farm, id)
+    p.stockedOn = body.stockedOn
+    p.count = body.count
+    p.survival = body.survival
+    return this.stocking(persona, id)
+  }
+
+  setPondNet(persona: Persona, id: string, netId: string): void {
+    const { farm, me } = this.ctx(persona)
+    if (me.role === 'worker') throw new MockError(403, 'not_allowed')
+    const p = this.pond(farm, id)
+    if (!farm.nets.some((n) => n.id === netId)) throw new MockError(404, 'not_found')
+    p.netId = netId
+  }
+
+  /* ----- overview ----- */
+
+  overview(persona: Persona): Overview {
+    const { farm, me } = this.ctx(persona)
+    this.need(me, 'farmOverview')
+    const tiles = farm.ponds.map((p) => this.tile(farm, p, me))
+    const targetG = 1000 / farm.targetPerKg
+    const tonnes = (t: PondTile) => {
+      const p = farm.ponds.find((x) => x.id === t.id)!
+      return p.count ? round1((p.count * (p.survival ?? 0.8) * targetG) / 1e6) : 0
+    }
+    const row = (t: PondTile): QueueRow => ({ pondId: t.id, pondCode: t.code, date: t.reachOn!, perKg: t.perKg!, abw: t.abw!, tonnes: tonnes(t) })
+    const known = tiles.filter((t) => t.daysToTarget !== null && t.reachOn).sort((a, b) => a.daysToTarget! - b.daysToTarget! || a.code.localeCompare(b.code))
+    const soon = known.filter((t) => t.daysToTarget! <= 5).map(row)
+    const later = known.filter((t) => t.daysToTarget! > 5 && t.daysToTarget! <= 14).map(row)
+    const band = (from: number, to: number | null) => {
+      const xs = known.filter((t) => t.daysToTarget! >= from && (to === null || t.daysToTarget! <= to))
+      return { from, to, ponds: xs.length, tonnes: round1(xs.reduce((a, t) => a + tonnes(t), 0)) }
+    }
+    const sum = (rows: QueueRow[]) => round1(rows.reduce((a, r) => a + r.tonnes, 0))
+    const ready = tiles.filter((t) => t.status === 'ready')
+    const urgent = tiles.filter((t) => t.status === 'urgent')
+    const missing = tiles.filter((t) => t.status === 'missing')
+    const todo: Overview['todo'] = []
+    const first = soon[0]
+    if (first) {
+      const t = tiles.find((x) => x.id === first.pondId)!
+      todo.push({
+        kind: 'harvest',
+        title: `โทรนัดห้องเย็น จับบ่อ ${first.pondCode}${t.daysToTarget === 0 ? ' วันนี้' : ` ${fmtDay(first.date)}`}`,
+        sub: `${first.perKg} ตัว/กก. · ราว ${first.tonnes} ตัน${t.caretaker ? ` · ${t.caretaker} โซน ${t.zone}` : ''}`,
+        pondId: first.pondId,
+      })
+    }
+    if (urgent.length) todo.push({ kind: 'check', title: `ดู ${urgent.length} บ่อที่โตช้าหรือแตกไซส์`, sub: urgent.map((t) => t.code).join(' · ') })
+    if (missing.length) {
+      const who = [...new Set(missing.map((t) => t.caretaker).filter(Boolean))].join(' ')
+      todo.push({ kind: 'missing', title: `ตามรูปยอ ${missing.length} บ่อที่ยังไม่ส่ง`, sub: `${missing.map((t) => t.code).join(' · ')}${who ? ` · ${who}` : ''}` })
+    }
+    return {
+      farmName: farm.name,
+      today: TODAY,
+      pondCount: farm.ponds.length,
+      targetPerKg: farm.targetPerKg,
+      todo,
+      tiles: {
+        ready: { n: ready.length, tonnes: round1(ready.reduce((a, t) => a + tonnes(t), 0)) },
+        good: { n: tiles.filter((t) => t.status === 'good').length },
+        watch: { n: tiles.filter((t) => t.status === 'watch').length },
+        urgent: { n: urgent.length + missing.length, slow: urgent.length, missing: missing.length },
+      },
+      photosToday: { sent: tiles.filter((t) => t.photoToday).length, total: tiles.length, missing: missing.map((t) => t.code) },
+      queueDays: Array.from({ length: 14 }, (_, i) => {
+        const date = addDays(TODAY, i)
+        return { date, n: known.filter((t) => t.reachOn === date).length }
+      }),
+      soon: { rows: soon, tonnes: sum(soon) },
+      later: { rows: later, tonnes: sum(later) },
+      beyond: [band(15, 25), band(26, null)].filter((b) => b.ponds > 0),
+    }
+  }
+
+  today(persona: Persona): TodayResponse {
+    const { farm, me } = this.ctx(persona)
+    const rows = me.pondIds.map((id) => {
+      const p = this.pond(farm, id)
+      const s = this.saved(farm, id).find((x) => dayOf(x.at) === TODAY)
+      const waiting = !s && farm.scans.some((x) => x.pondId === id && x.status === 'waiting' && dayOf(x.at) === TODAY)
+      return {
+        pondId: p.id,
+        pondCode: p.code,
+        scanId: s?.id ?? null,
+        perKg: s?.result?.perKg ?? null,
+        abw: s?.result?.abw ?? null,
+        by: s ? (s.measuredBy ?? s.by) : null,
+        at: s?.result?.measuredAt ?? null,
+        lighter: s?.result ? isLighter(s.result.abw, s.result.previous ?? this.previousOf(farm, s)) : false,
+        canFix: s ? this.canFix(s, me) : false,
+        photoUrl: s ? photoUrl(s.photo) : null,
+        waiting,
+      }
+    })
+    return { done: rows.filter((r) => r.scanId || r.waiting).length, total: rows.length, rows }
+  }
+
+  /* ----- nets ----- */
+
+  private netView(farm: MFarm, n: MNet): Net {
+    const own = farm.ponds.filter((p) => p.netId === n.id)
+    const uses = n.isFarmDefault ? farm.ponds.filter((p) => !p.netId || p.netId === n.id) : own
+    return {
+      id: n.id,
+      shape: n.shape,
+      cm: n.cm,
+      use: n.isFarmDefault ? 'ยอของฟาร์ม' : own.length ? pondRange(own.map((p) => p.code).sort()) : 'ยังไม่ผูกบ่อ',
+      pondCount: uses.length,
+      addedBy: `${n.addedBy}ใส่ ${fmtDay(n.addedOn)}`,
+      addedOn: n.addedOn,
+      isFarmDefault: n.isFarmDefault,
+    }
+  }
+
+  nets(persona: Persona): { nets: Net[] } {
+    const { farm } = this.ctx(persona)
+    return { nets: farm.nets.map((n) => this.netView(farm, n)) }
+  }
+
+  addNet(persona: Persona, body: NetCreate): Net {
+    const { farm, me } = this.ctx(persona)
+    if (!Number.isInteger(body.cm) || body.cm < NET_CM_MIN || body.cm > NET_CM_MAX) throw new MockError(400, 'net_out_of_range')
+    const first = farm.nets.length === 0
+    const n: MNet = { id: this.nextId('net'), shape: body.shape, cm: body.cm, addedBy: me.name, addedOn: TODAY, isFarmDefault: first || Boolean(body.farmDefault) }
+    if (n.isFarmDefault) farm.nets.forEach((x) => (x.isFarmDefault = false))
+    farm.nets.push(n)
+    if (body.pondId) this.pond(farm, body.pondId).netId = n.id
+    return this.netView(farm, n)
+  }
+
+  editNet(persona: Persona, id: string, body: NetEdit): Net {
+    const { farm } = this.ctx(persona)
+    const n = farm.nets.find((x) => x.id === id)
+    if (!n) throw new MockError(404, 'not_found')
+    if (!Number.isInteger(body.cm) || body.cm < NET_CM_MIN || body.cm > NET_CM_MAX) throw new MockError(400, 'net_out_of_range')
+    n.cm = body.cm
+    if (body.shape) n.shape = body.shape
+    return this.netView(farm, n)
+  }
+
+  /* ----- scans ----- */
+
+  private scanView(farm: MFarm, s: MScan, me: MMember): Scan {
+    const p = this.pond(farm, s.pondId)
+    return {
+      id: s.id,
+      pondId: p.id,
+      pondCode: p.code,
+      photoUrl: photoUrl(s.photo),
+      width: s.width,
+      height: s.height,
+      rimGuess: s.rimGuess,
+      net: farm.nets.length ? this.netView(farm, netFor(farm, p)) : null,
+      photoBy: s.by,
+      photoAt: s.at,
+      status: s.status,
+      result: s.result,
+      measuredBy: s.measuredBy,
+      canFix: this.canFix(s, me),
+    }
+  }
+
+  upload(persona: Persona, pondId: string, bytes: Buffer, type: string): { scan: Scan } {
+    const { farm, me } = this.ctx(persona)
+    this.need(me, 'scanSelf')
+    const p = this.pond(farm, pondId)
+    const size = imageSize(bytes) ?? { width: 1600, height: 1200 }
+    // The yor fixture (or a crop of it at its aspect): the guess, the true rim and the dots line up.
+    const fixture = size.width >= 400 && Math.abs(size.width / size.height - FIXTURE_ASPECT) < 0.01
+    const id = this.nextId('s')
+    const photo = `up-${id}`
+    photos.set(photo, { bytes, type: type || 'image/jpeg' })
+    const s: MScan = {
+      id,
+      pondId: p.id,
+      photo,
+      width: size.width,
+      height: size.height,
+      rimGuess: fixture ? GUESS : centredGuess(),
+      truthRim: fixture ? FIXED : centredGuess(),
+      dots: fixture ? DOTS : null,
+      by: me.name,
+      at: nowIso(),
+      status: 'waiting',
+      result: null,
+      measuredBy: null,
+      measuredById: null,
+      remeasures: 0,
+      savedAt: null,
+      fixed: null,
+      quality: 'ok',
+      askedReason: null,
+    }
+    farm.scans.push(s)
+    return { scan: this.scanView(farm, s, me) }
+  }
+
+  getScan(persona: Persona, id: string): Scan {
+    const { farm, me } = this.ctx(persona)
+    return this.scanView(farm, this.scan(farm, id), me)
+  }
+
+  /** What น้ำ would measure on this photo with this rim and this ยอ. */
+  private compute(farm: MFarm, s: MScan, rim: Pt[], net: MNet): ScanResult {
+    const p = this.pond(farm, s.pondId)
+    if (!fitEllipse(rim)) throw new MockError(400, 'bad_rim')
+    const trueNet = p.zone === 'E' && farm.id === 'farm-saina' ? 75 : 82
+    const rimK = Math.pow(ellipseArea(s.truthRim) / ellipseArea(rim), RIM_EXP)
+    const netK = Math.pow(net.cm / trueNet, 3)
+    const abw = round1(p.trueAbw * rimK * netK)
+    const shrimp = shrimpFor(`${s.id}:${abw}`, abw, p.cv, p.split, rim, s.dots)
+    const stats = weightStats(shrimp.map((q) => q.g))
+    return {
+      abw,
+      perKg: Math.round(1000 / abw),
+      lengthCm: lengthOf(abw),
+      count: shrimp.length,
+      cv: round2(stats.cv),
+      shrimp,
+      rim,
+      net: { id: net.id, shape: net.shape, cm: net.cm },
+      measuredAt: s.result?.measuredAt ?? nowIso(),
+      remeasuresLeft: Math.max(0, 3 - s.remeasures),
+      previous: this.previousOf(farm, s),
+    }
+  }
+
+  measure(persona: Persona, id: string, rim: Pt[], netId: string): MeasureResponse {
+    const { farm, me } = this.ctx(persona)
+    const s = this.scan(farm, id)
+    const own = s.by === me.name
+    this.need(me, own ? 'scanSelf' : 'measureInbox')
+    if (!farm.nets.length) throw new MockError(409, 'no_net')
+    const net = farm.nets.find((n) => n.id === netId) ?? netFor(farm, this.pond(farm, s.pondId))
+    if (s.result) {
+      if (s.remeasures >= 3) throw new MockError(409, 'remeasure_limit')
+      s.remeasures += 1
+    } else {
+      if (farm.credits <= 0) throw new MockError(402, 'no_credits')
+      farm.credits -= 1
+    }
+    s.result = this.compute(farm, s, rim, net)
+    s.status = 'measured'
+    s.measuredBy = me.name
+    s.measuredById = me.id
+    return { scan: this.scanView(farm, s, me), creditsLeft: farm.credits }
+  }
+
+  changeNet(persona: Persona, id: string, netId: string): MeasureResponse {
+    const { farm, me } = this.ctx(persona)
+    const s = this.scan(farm, id)
+    if (!s.result) throw new MockError(409, 'not_measured')
+    const net = farm.nets.find((n) => n.id === netId)
+    if (!net) throw new MockError(404, 'not_found')
+    // The chosen ยอ becomes this pond's from now on; measuring the same photo again is free.
+    const p = this.pond(farm, s.pondId)
+    p.netId = net.isFarmDefault ? null : net.id
+    s.result = this.compute(farm, s, s.result.rim, net)
+    return { scan: this.scanView(farm, s, me), creditsLeft: farm.credits }
+  }
+
+  save(persona: Persona, id: string, notes: string[] = []): SaveResponse {
+    const { farm, me } = this.ctx(persona)
+    const s = this.scan(farm, id)
+    if (!s.result) throw new MockError(409, 'not_measured')
+    const p = this.pond(farm, s.pondId)
+    s.status = 'saved'
+    s.savedAt = nowIso()
+    if (notes.length) p.note = { by: me.name, at: nowIso(), text: notes.join(' · ') }
+    farm.activity.unshift({ who: me.name, what: `สแกนกุ้ง · ${p.code}`, when: `วันนี้ ${fmtTime(nowIso())}` })
+    const mine = me.pondIds
+    const doneToday = this.today(persona).done
+    const tile = this.tile(farm, p, me)
+    return {
+      pondId: p.id,
+      pondCode: p.code,
+      chatText: `สแกน ${p.code} แล้ว`,
+      doneToday,
+      mineTotal: mine.length,
+      reachOn: tile.reachOn,
+    }
+  }
+
+  fix(persona: Persona, id: string, rim: Pt[]): FixResponse {
+    const { farm, me } = this.ctx(persona)
+    const s = this.scan(farm, id)
+    if (!s.result || !this.canFix(s, me)) throw new MockError(403, 'not_allowed')
+    if (s.remeasures >= 3) throw new MockError(409, 'remeasure_limit')
+    s.remeasures += 1
+    const net = farm.nets.find((n) => n.id === s.result!.net.id) ?? netFor(farm, this.pond(farm, s.pondId))
+    const after = this.compute(farm, s, rim, net)
+    return { before: s.result, after }
+  }
+
+  fixApply(persona: Persona, id: string, use: 'new' | 'old', rim: Pt[]): void {
+    const { farm, me } = this.ctx(persona)
+    const s = this.scan(farm, id)
+    if (!s.result || !this.canFix(s, me)) throw new MockError(403, 'not_allowed')
+    if (use === 'old') return
+    const net = farm.nets.find((n) => n.id === s.result!.net.id) ?? netFor(farm, this.pond(farm, s.pondId))
+    const old = s.result
+    s.result = { ...this.compute(farm, s, rim, net), measuredAt: old.measuredAt }
+    s.fixed = { by: me.name, at: nowIso(), oldPerKg: old.perKg }
+  }
+
+  /* ----- inbox ----- */
+
+  inbox(persona: Persona): InboxResponse {
+    const { farm, me } = this.ctx(persona)
+    this.need(me, 'measureInbox')
+    const waiting = farm.scans.filter((s) => s.status === 'waiting' && s.by !== me.name && !s.result)
+    const senders = farm.members.filter((m) => m.role !== 'owner').map((m) => ({ name: m.name, n: waiting.filter((s) => s.by === m.name).length }))
+    return {
+      photos: waiting.map((s) => ({
+        scanId: s.id,
+        pondId: s.pondId,
+        pondCode: this.pond(farm, s.pondId).code,
+        photoUrl: photoUrl(s.photo),
+        by: s.by,
+        at: s.at,
+        quality: s.quality,
+      })),
+      creditsLeft: farm.credits,
+      senders: senders.filter((x) => x.n > 0),
+    }
+  }
+
+  askAgain(persona: Persona, id: string, reason: AskAgainReason): void {
+    const { farm, me } = this.ctx(persona)
+    if (me.role === 'worker') throw new MockError(403, 'not_allowed')
+    const s = this.scan(farm, id)
+    if (s.status === 'waiting') s.status = 'asked_again'
+    s.askedReason = reason
+  }
+
+  /* ----- people ----- */
+
+  private memberView(farm: MFarm, m: MMember, me: MMember): Member {
+    const codes = farm.ponds.filter((p) => m.pondIds.includes(p.id))
+    const done = codes.filter((p) => this.photoToday(farm, p)).length
+    const zones = [...new Set(codes.map((p) => p.zone))]
+    return {
+      id: m.id,
+      name: m.name,
+      role: m.role,
+      scope:
+        m.role === 'owner'
+          ? 'ทุกบ่อ'
+          : m.role === 'manager'
+            ? `ดูแล ${codes.length} บ่อ · โซน ${zones.join(' และ ')}`
+            : `ดูแล ${codes.length} บ่อ · วันนี้ ${done}/${codes.length}`,
+      joined: m.role === 'owner' ? 'เจ้าของฟาร์ม' : `เข้าร่วม ${fmtDayYear(m.joined)}`,
+      isYou: m.id === me.id,
+    }
+  }
+
+  private pondsLabel(farm: MFarm, ids: string[]): string {
+    const codes = farm.ponds.filter((p) => ids.includes(p.id)).map((p) => p.code)
+    if (!codes.length) return 'ทุกบ่อ'
+    const zones = new Set(codes.map((c) => c.replace(/\d+$/, '')))
+    if (zones.size === 1) return pondRange(codes)
+    return codes.length <= 4 ? codes.join(' ') : `${codes.slice(0, 3).join(' ')} และอีก ${codes.length - 3} บ่อ`
+  }
+
+  private inviteView(farm: MFarm, inv: MInvite, host: string): Invite {
+    const expiresOn = addDays(inv.createdOn, 7)
+    return {
+      code: inv.code,
+      url: `${host}/liff/app/join?invite=${inv.code}`,
+      role: inv.role,
+      pondsLabel: this.pondsLabel(farm, inv.pondIds),
+      expiresOn,
+      daysLeft: Math.max(0, daysBetween(TODAY, expiresOn)),
+    }
+  }
+
+  members(persona: Persona, host: string): MembersResponse {
+    const { farm, me } = this.ctx(persona)
+    const covered = new Set(farm.members.filter((m) => m.role !== 'owner').flatMap((m) => farm.ponds.filter((p) => m.pondIds.includes(p.id)).map((p) => p.zone)))
+    return {
+      members: farm.members.map((m) => this.memberView(farm, m, me)),
+      invites: me.role === 'owner' ? farm.invites.filter((i) => i.status === 'open').map((i) => this.inviteView(farm, i, host)) : [],
+      activity: farm.activity.slice(0, 6),
+      uncoveredZones: [...new Set(farm.ponds.map((p) => p.zone))].filter((z) => !covered.has(z)),
+    }
+  }
+
+  private member(farm: MFarm, id: string): MMember {
+    const m = farm.members.find((x) => x.id === id)
+    if (!m) throw new MockError(404, 'not_found')
+    return m
+  }
+
+  setRole(persona: Persona, id: string, role: Exclude<Role, 'owner'>): void {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const m = this.member(farm, id)
+    if (m.role === 'owner') throw new MockError(403, 'not_allowed')
+    m.role = role
+    m.perms = { ...DEFAULTS[role] }
+  }
+
+  removeMember(persona: Persona, id: string): void {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const m = this.member(farm, id)
+    if (m.role === 'owner') throw new MockError(403, 'not_allowed')
+    farm.members = farm.members.filter((x) => x.id !== id)
+    for (const p of Object.values(this.people)) if (p.memberId === id) p.farmId = null
+  }
+
+  permissions(persona: Persona, id: string): PermissionsResponse {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const m = this.member(farm, id)
+    return { member: this.memberView(farm, m, me), pondsLabel: this.pondsLabel(farm, m.pondIds), perms: m.perms, defaults: DEFAULTS[m.role] }
+  }
+
+  patchPermissions(persona: Persona, id: string, body: PermissionsPatch): PermissionsResponse {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const m = this.member(farm, id)
+    if (m.role === 'owner') throw new MockError(403, 'not_allowed')
+    if ('key' in body) m.perms = { ...m.perms, [body.key]: body.value }
+    else if ('role' in body) {
+      m.role = body.role
+      m.perms = { ...DEFAULTS[body.role] }
+    } else m.perms = { ...DEFAULTS[m.role] }
+    return this.permissions(persona, id)
+  }
+
+  createInvite(persona: Persona, body: InviteCreate, host: string): Invite {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const r = rng(`${Date.now()}${this.seq}`)
+    const code = Array.from({ length: 7 }, () => CODE_CHARS[Math.floor(r() * CODE_CHARS.length)]).join('')
+    const inv: MInvite = { code, role: body.role, pondIds: body.pondIds.filter((id) => farm.ponds.some((p) => p.id === id)), createdOn: TODAY, status: 'open' }
+    farm.invites.push(inv)
+    return this.inviteView(farm, inv, host)
+  }
+
+  cancelInvite(persona: Persona, code: string): void {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const inv = farm.invites.find((i) => i.code === code)
+    if (!inv) throw new MockError(404, 'not_found')
+    inv.status = 'cancelled'
+  }
+
+  private findInvite(code: string): { farm: MFarm; inv: MInvite } {
+    for (const farm of this.farms.values()) {
+      const inv = farm.invites.find((i) => i.code === code.toUpperCase())
+      if (inv) return { farm, inv }
+    }
+    throw new MockError(404, 'invite_invalid')
+  }
+
+  invitePreview(persona: Persona, code: string): InvitePreview {
+    const { farm, inv } = this.findInvite(code)
+    const owner = farm.members.find((m) => m.id === farm.ownerId)!
+    const n = inv.pondIds.length
+    return {
+      code: inv.code,
+      farmName: farm.name,
+      pondCount: farm.ponds.length,
+      ownerName: owner.name,
+      role: inv.role,
+      pondsLabel: n ? `${this.pondsLabel(farm, inv.pondIds)} · ${n} บ่อ` : 'ทุกบ่อ',
+      suggestedName: this.people[persona].name,
+      valid: inv.status === 'open',
+      reason: inv.status === 'open' ? undefined : inv.status,
+    }
+  }
+
+  acceptInvite(persona: Persona, code: string, body: InviteAccept): Session {
+    const { farm, inv } = this.findInvite(code)
+    if (inv.status !== 'open') throw new MockError(409, 'invite_invalid')
+    const who = this.people[persona]
+    const name = body.displayName.trim() || who.name
+    farm.members = farm.members.filter((m) => m.id !== who.memberId)
+    farm.members.push({ id: who.memberId, name, role: inv.role, pondIds: inv.pondIds, joined: TODAY, perms: { ...DEFAULTS[inv.role] } })
+    inv.status = 'used'
+    who.farmId = farm.id
+    who.name = name
+    farm.activity.unshift({ who: name, what: 'เข้าร่วมฟาร์ม', when: `วันนี้ ${fmtTime(nowIso())}` })
+    return this.session(persona)
+  }
+
+  /* ----- settings ----- */
+
+  settings(persona: Persona): SettingsResponse {
+    const { farm } = this.ctx(persona)
+    return { notify: farm.notify, nets: { count: farm.nets.length, sizes: farm.nets.map((n) => n.cm) } }
+  }
+
+  saveNotify(persona: Persona, patch: Partial<NotifySettings>): SettingsResponse {
+    const { farm, me } = this.ctx(persona)
+    if (me.role === 'worker') throw new MockError(403, 'not_allowed')
+    farm.notify = { ...farm.notify, ...patch }
+    return this.settings(persona)
+  }
+
+  /* ----- print ----- */
+
+  farmSheet(persona: Persona): FarmSheet {
+    const { farm, me } = this.ctx(persona)
+    this.need(me, 'printSheet')
+    const o = this.overview(persona)
+    const tiles = farm.ponds.map((p) => this.tile(farm, p, me))
+    const caretakerOf = (id: string) => tiles.find((t) => t.id === id)?.caretaker ?? null
+    const order: Record<string, number> = { urgent: 0, missing: 1, watch: 2 }
+    return {
+      farmName: farm.name,
+      date: TODAY,
+      printedAt: at(TODAY, '07:00'),
+      targetPerKg: farm.targetPerKg,
+      photosToday: { sent: o.photosToday.sent, total: o.photosToday.total },
+      tiles: o.tiles,
+      queue: [...o.soon.rows.map((r) => ({ ...r, soon: true })), ...o.later.rows.map((r) => ({ ...r, soon: false }))].map((r) => ({ ...r, caretaker: caretakerOf(r.pondId) })),
+      watch: tiles
+        .filter((t) => t.status === 'urgent' || t.status === 'missing' || t.status === 'watch')
+        .sort((a, b) => order[a.status]! - order[b.status]! || a.code.localeCompare(b.code))
+        .map((t) => ({ pondCode: t.code, kind: t.status as 'urgent' | 'missing' | 'watch', caretaker: t.caretaker, issue: t.issue ?? '', perKg: t.perKg })),
+      zones: [...new Set(tiles.map((t) => t.zone))].map((zone) => ({ zone, caretaker: tiles.find((t) => t.zone === zone)?.caretaker ?? null, ponds: tiles.filter((t) => t.zone === zone) })),
+    }
+  }
+
+  pondSheet(persona: Persona, id: string): PondSheet {
+    const { farm, me } = this.ctx(persona)
+    this.need(me, 'printSheet')
+    const p = this.pond(farm, id)
+    const last = this.saved(farm, p.id)[0]
+    if (!last?.result) throw new MockError(404, 'not_found')
+    return {
+      farmName: farm.name,
+      pond: this.tile(farm, p, me),
+      scan: this.summary(farm, last, me),
+      result: last.result,
+      photoWidth: last.width,
+      photoHeight: last.height,
+      growth: this.growth(farm, p),
+      targetPerKg: farm.targetPerKg,
+    }
+  }
+
+  sendSheet(persona: Persona, body: { sheet: 'farm' } | { sheet: 'pond'; pondId: string }): { sent: number } {
+    const { me } = this.ctx(persona)
+    this.need(me, 'printSheet')
+    return { sent: body.sheet === 'farm' ? 2 : 1 }
+  }
+}
+
+/* ---------- module helpers ---------- */
+
+function dayOf(instant: string): string {
+  return new Date(new Date(instant).getTime() + 7 * 3600_000).toISOString().slice(0, 10)
+}
+
+export function photoUrl(photo: string): string {
+  return `/mock-photos/${encodeURIComponent(photo)}`
+}
+
+/** Width and height from a JPEG's SOF marker or a PNG's IHDR; null when neither. */
+export function imageSize(b: Buffer): { width: number; height: number } | null {
+  if (b.length > 24 && b[0] === 0x89 && b[1] === 0x50) return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }
+  if (b[0] !== 0xff || b[1] !== 0xd8) return null
+  let i = 2
+  while (i + 9 < b.length) {
+    if (b[i] !== 0xff) {
+      i++
+      continue
+    }
+    const marker = b[i + 1]!
+    const len = b.readUInt16BE(i + 2)
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { height: b.readUInt16BE(i + 5), width: b.readUInt16BE(i + 7) }
+    }
+    i += 2 + len
+  }
+  return null
+}

@@ -1,0 +1,406 @@
+/* The app's own rules, on top of mock-port.css (the mock's screen CSS, kept
+   close to verbatim so the two can be diffed). Large text (.xl) is the default
+   on every screen: body 16 to 17px, nothing under 14px, buttons 56px. */
+@import './mock-port.css';
+
+html,
+body {
+  margin: 0;
+  background: #f6f6fb;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+#root {
+  min-height: 100vh;
+}
+
+/* The screen fills the phone; on a desktop it sits as a phone-wide column. */
+.scr {
+  font-feature-settings: 'tnum' 1;
+}
+.scr .vbody {
+  padding-bottom: 20px;
+}
+.scr .vf,
+.scr .vnav {
+  padding-bottom: max(14px, env(safe-area-inset-bottom, 0px));
+}
+.scr.liff {
+  background: var(--sf);
+}
+
+/* Focus: visible on every control, never only colour. */
+.scr button:focus-visible,
+.scr input:focus-visible,
+.scr a:focus-visible {
+  outline: 3px solid var(--hero);
+  outline-offset: 2px;
+}
+.scr a {
+  color: var(--hero);
+}
+
+/* Disabled real buttons look like the mock's .off. */
+.scr .vbtn:disabled,
+.scr button.off {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.scr .vbtn.busy {
+  opacity: 0.7;
+}
+
+/* Text inputs keep the mock's .inp box, with a real input inside. */
+.inp input,
+.inp select {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+.inp:focus-within {
+  border-color: var(--hero);
+  box-shadow: 0 0 0 3px var(--heros);
+}
+.inp.dim:focus-within {
+  border-color: var(--hero);
+}
+.inp.bad {
+  border-color: var(--bad);
+}
+.fielderr {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--bad);
+}
+
+/* The typed ยอ width: a real numeric input in the mock's box. */
+.szin .fld input {
+  width: 3.2ch;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  text-align: right;
+  font: 800 36px 'JetBrains Mono', monospace;
+  color: var(--ink);
+  padding: 0;
+  caret-color: var(--hero);
+}
+.szin .fld:focus-within {
+  box-shadow: 0 0 0 3px var(--heros);
+}
+.szin .fld.bad {
+  border-color: var(--bad);
+}
+
+/* Photos are <div>s with a background image, like the mock's .ph parts. */
+.photo {
+  background-size: cover;
+  background-position: center;
+  background-color: #7d8796;
+}
+.r2 {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.r2 .mk {
+  touch-action: none;
+  cursor: grab;
+}
+.r2 .mk:active {
+  cursor: grabbing;
+}
+.r2 .tap {
+  touch-action: none;
+}
+.r2w .loupe {
+  z-index: 3;
+}
+
+/* Boot, empty and error states. */
+.state {
+  flex: 1;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+.state .nn {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+}
+.state .nn.breathe {
+  animation: nnBreathe 1400ms ease-in-out infinite alternate;
+}
+@keyframes nnBreathe {
+  to {
+    transform: scale(1.05);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .state .nn.breathe {
+    animation: none;
+  }
+}
+.state b {
+  font-size: 22px;
+  line-height: 1.35;
+}
+.state span {
+  font-size: 17px;
+  color: var(--ink2);
+  max-width: 30ch;
+}
+.state .vbtn {
+  min-width: 220px;
+}
+.state .data {
+  font: 600 14px 'JetBrains Mono', monospace;
+  color: var(--ink2);
+  background: #fff;
+  border: 1px solid var(--ln);
+  border-radius: 10px;
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+}
+
+/* Skeleton rows while a page loads. */
+.sk {
+  border-radius: 18px;
+  background: linear-gradient(90deg, #ececf2 0%, #f6f6fb 50%, #ececf2 100%);
+  background-size: 200% 100%;
+  animation: sk 1.2s linear infinite;
+}
+@keyframes sk {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk {
+    animation: none;
+  }
+}
+
+/* Toast: comes in, stays, goes. */
+.toast {
+  z-index: 20;
+  animation: toastIn 180ms ease-out both;
+}
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Sheets sit above the page; the dim behind cancels. */
+.scr .dim {
+  z-index: 10;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+.scr .sheet,
+.scr .kbs {
+  z-index: 11;
+}
+.scr .sheet {
+  max-height: 88%;
+  overflow-y: auto;
+  padding-bottom: max(18px, env(safe-area-inset-bottom, 0px));
+}
+
+/* Env chip off production, and the mock's persona strip. */
+.envchip {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 30;
+  font: 800 12px 'JetBrains Mono', monospace;
+  letter-spacing: 0.06em;
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: #fbefc9;
+  color: #6b4a00;
+  pointer-events: none;
+}
+.mockbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.mockbar b {
+  font: 800 13px 'JetBrains Mono', monospace;
+  color: #6b4a00;
+  background: #fbefc9;
+  border-radius: 6px;
+  padding: 0 6px;
+}
+
+/* The hidden camera input behind ถ่ายรูปยอ. */
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Upload progress under the photo step. */
+.upl {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink2);
+}
+
+/* The chat-closed stand-in the mock shows where LINE would close the LIFF. */
+.closed {
+  background: #b9c8de;
+}
+.closed .bub {
+  background: #a8e58c;
+  border-radius: 18px;
+  padding: 10px 14px;
+  font-size: 17px;
+  max-width: 260px;
+  justify-self: center;
+  overflow-wrap: anywhere;
+}
+
+/* Print: full-size sheets, one per page, nothing else on paper. */
+.sheetpage {
+  background: #dadbe3;
+  min-height: 100vh;
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 16px 0 96px;
+}
+.sheetpage .a4 {
+  box-shadow: 0 4px 16px rgba(13, 12, 24, 0.18);
+}
+.sheetpage .printbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 12px 16px max(14px, env(safe-area-inset-bottom, 0px));
+  background: #fff;
+  border-top: 1px solid #ececf2;
+}
+@page {
+  size: A4;
+  margin: 0;
+}
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+  .sheetpage {
+    background: #fff;
+    padding: 0;
+    gap: 0;
+    display: block;
+  }
+  .sheetpage .a4 {
+    box-shadow: none;
+    page-break-after: always;
+    break-after: page;
+  }
+  .sheetpage .printbar {
+    display: none;
+  }
+}
+
+/* ---------- states the mock canvas did not draw ---------- */
+
+/* หน้าบ่อ banner: teal is ready (the mock's only one); the rest follow the pond tiles. */
+.xban.g {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px #c9c9d6;
+}
+.xban.w {
+  background: var(--warns);
+  color: #5e3a00;
+  box-shadow: inset 0 0 0 2px #b26a00;
+}
+.xban.u {
+  background: var(--bads);
+  color: #7f1d1d;
+  box-shadow: inset 0 0 0 2px var(--bad);
+}
+/* No photo today: dashed red, like the small grid's .pd.m. */
+.xpd.m {
+  background: #fff !important;
+  border-style: dashed !important;
+  border-color: var(--bad) !important;
+  color: #7f1d1d;
+}
+
+/* Photo thumbnails come from the server, not a CSS gradient. */
+.thm.photo {
+  background-color: #e7e7ef;
+  background-size: cover;
+  background-position: center;
+}
+
+/* A4 preview: Paper scales the full sheet itself, so the canvas's fixed .3526 is off. */
+.paper.pz {
+  width: 100%;
+  max-width: 420px;
+}
+.paper.pz .a4 {
+  position: static;
+  transform: none;
+}
+/* The pond sheet's card has no data yet: a plain page with a photo block. */
+.popt .mp .mpp {
+  position: absolute;
+  inset: 8px 8px auto;
+  height: 28px;
+  border-radius: 2px;
+  background: linear-gradient(#cfd8e6, #b8c4d6);
+}
+.pdots button {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #9a99ae;
+}
+.pdots button.on {
+  background: var(--hero);
+}
+
+/* Invite QR: an image from the qrcode package. */
+.qrc img.qr,
+.qrc .qr {
+  width: 180px;
+  height: 180px;
+  display: block;
+  image-rendering: pixelated;
+}
+.qrc .qr.sk {
+  border-radius: 12px;
+  background: #ececf2;
+}

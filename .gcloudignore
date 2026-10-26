@@ -1,0 +1,17 @@
+# Used by a manual `gcloud builds submit` from this folder. GitHub triggers
+# clone the repo and do not read it. Same rule as .dockerignore: no secrets,
+# no build output.
+.git
+.github
+**/node_modules
+dist
+public/liff
+build-id
+coverage
+**/.env*
+!.env.example
+!.env.staging.example
+**/*.log
+.omc
+.omx
+liff-app/tests/visual/out

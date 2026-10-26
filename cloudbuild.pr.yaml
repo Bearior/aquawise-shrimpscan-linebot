@@ -1,0 +1,32 @@
+# Cloud Build PR gate: trigger <slug>-pr-gate, on pull requests into
+# ^(main|launch-prep)$. Tests only: no image, no deploy.
+#
+# This is the repo's CI. There is no GitHub Actions CI on purpose: Actions
+# minutes ran out across the org on 2026-08-26 and stopped every deploy for a
+# day. The only Actions workflow is the 5-minute notify-ecosystem dispatch.
+#
+# ⚠ MUST MATCH STEP 1 OF cloudbuild.yaml. Change both together.
+
+steps:
+  - id: test
+    name: node:24
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        corepack enable
+        pnpm install --frozen-lockfile
+        (cd liff-app && pnpm install --frozen-lockfile)
+
+        pnpm run typecheck
+        pnpm run typecheck:liff
+        pnpm run lint
+
+        pnpm run test:run
+        (cd liff-app && pnpm run test:run)
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1200s'

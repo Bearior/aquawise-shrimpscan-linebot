@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/liff/favicon.svg" />
+    <!-- viewport-fit=cover: the page reaches into the safe-area gutters on
+         notched phones so env(safe-area-inset-*) returns real values. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#004AAD" />
+    <meta name="build-id" content="%VITE_BUILD_ID%" />
+    <!-- No Google Fonts link, on purpose: the fonts are vendored through
+         @fontsource and imported from src/main.tsx. A cross-origin font
+         stylesheet costs a DNS + TLS + RTT before first paint on rural 3G. -->
+    <title>AquaWise สแกนกุ้ง</title>
+    <style>
+      html, body { margin: 0; background: #F6F6FB; }
+      #aw-boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+      #aw-boot img { display: block; width: 88px; height: 88px; border-radius: 50%; animation: awIn 700ms cubic-bezier(.16,1,.3,1) both, awBreathe 1400ms ease-in-out 700ms infinite alternate; }
+      @keyframes awIn { from { opacity: 0; transform: scale(.72); } }
+      @keyframes awBreathe { to { transform: scale(1.05); } }
+      @media (prefers-reduced-motion: reduce) { #aw-boot img { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Boot mark: shows from the first frame while the bundle downloads, and
+         goes the moment React puts anything in #root. -->
+    <div id="aw-boot" aria-hidden="true"><img src="/src/assets/nn-avatar.png" alt="" width="88" height="88" /></div>
+    <script>
+      (function () {
+        var boot = document.getElementById('aw-boot')
+        var root = document.getElementById('root')
+        if (!boot || !root || !window.MutationObserver) return
+        var mo = new MutationObserver(function () {
+          if (!root.firstChild) return
+          mo.disconnect()
+          boot.parentNode.removeChild(boot)
+        })
+        mo.observe(root, { childList: true })
+      })()
+    </script>
+    <!-- Stale-bundle self-heal, from line-bot: LINE caches the LIFF bundle
+         beyond header rules, so a farmer can keep running an old build after a
+         deploy. Vite bakes %VITE_BUILD_ID% into THIS document; the server
+         returns the image's id from /api/liff-config. A mismatch reloads ONCE,
+         guarded by a 10-minute localStorage stamp (same key as
+         src/lib/liff/build-version.ts, so the two can never double-reload).
+         Do NOT change /liff cache headers to fix staleness: no-store on the
+         document loops the LINE login. -->
+    <script>
+      (function () {
+        var baked = '%VITE_BUILD_ID%'
+        if (!baked || baked === 'dev' || baked.indexOf('%') !== -1) return
+        fetch('/api/liff-config', { cache: 'no-store' })
+          .then(function (r) { return r.json() })
+          .then(function (cfg) {
+            var live = cfg && cfg.build_id
+            if (!live || live === 'unknown' || live === baked) return
+            var KEY = 'aw_scan_liff_build_reload'
+            try {
+              var raw = localStorage.getItem(KEY)
+              if (raw) {
+                var ts = JSON.parse(raw).ts
+                if (typeof ts === 'number' && Date.now() - ts < 600000) return
+              }
+              localStorage.setItem(KEY, JSON.stringify({ ts: Date.now() }))
+            } catch (e) { /* storage unavailable: still allow one reload */ }
+            location.reload()
+          })
+          .catch(function () { /* offline or error: never block boot */ })
+      })()
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
