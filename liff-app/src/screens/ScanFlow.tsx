@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '@/api/client'
-import type { Net, NetShape, Pt, Scan } from '@/api/types'
+import type { Net, Pt, Scan } from '@/api/types'
 import { Page, useCloseLiff } from '@/components/Page'
 import { Btn, Chip, ErrorState, Head2, Head3, InlineError, Skeleton, WarnRow } from '@/components/ui'
 import { PondPicker } from '@/components/pond-pick'
-import { NetAsk } from '@/components/nets'
-import { NetChip, ResultBody } from '@/components/result'
+import { NetStep, netChoiceFrom, netChoiceWants, type NetChoice } from '@/components/nets'
+import { NetChip, ResultBody, bandedShrimp } from '@/components/result'
 import { NetChangeSheet } from '@/components/net-change'
 import { RimEditor } from '@/components/rim'
-import { Measuring, PhotoGuide, aspectOf, measureAtLeast, prepPhoto, usePhotoPicker } from '@/components/scan-steps'
+import { Measuring, PhotoGuide, aspectOf, prepPhoto, usePhotoPicker } from '@/components/scan-steps'
 import { closeLiff, sendChatText } from '@/lib/liff-actions'
-import { fitEllipse } from '@/lib/rim'
+import { useBlink } from '@/lib/motion'
+import { fitRim } from '@/lib/rim'
 import { fmtWeekday } from '@/lib/format'
 import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
@@ -22,8 +23,11 @@ type Step = 'pond' | 'net' | 'photo' | 'rim' | 'measuring' | 'result'
 const NOTE_CHIPS = ['กินดี', 'กินลดลง', 'ตัวนิ่ม', 'ขี้ขาว', 'น้ำเขียวจัด']
 
 /**
- * สแกนกุ้ง from the menu (W17 to W22 for a worker, O19 to O19i for the owner):
- * pond, the ยอ (first time for the farm only), photo, rim, then the result.
+ * สแกนกุ้ง from the menu, in the steps of แบบ 2 (docs/shrimp-scan-rim-redesign,
+ * M2): pond, the ยอ, photo, rim, then measuring and the result on the last
+ * step. The owner answers the ยอ every time, with this pond's ยอ already
+ * chosen (O19 to O19i); a worker has no ยอ step and sees it as a chip on the
+ * photo step (W17 to W22).
  */
 export default function ScanFlow() {
   const { session } = useSession()
@@ -39,16 +43,18 @@ export default function ScanFlow() {
 
   const startPond = params.get('pond')
   const [pondId, setPondId] = useState<string | null>(startPond)
-  const [step, setStep] = useState<Step>(startPond ? 'photo' : 'pond')
-  // Ask about the ยอ only when the farm has none when the flow opens.
-  const [askNet, setAskNet] = useState<boolean | null>(null)
-  if (askNet === null && nets.data) setAskNet(nets.data.nets.length === 0)
+  const [step, setStep] = useState<Step>(startPond ? (worker ? 'photo' : 'net') : 'pond')
+  // The ยอ step's answer; null until it is touched, so it starts from the pond's ยอ.
+  const [choice, setChoice] = useState<NetChoice | null>(null)
+  // The ยอ this scan is measured against, once the ยอ step saved it.
+  const [usedNet, setUsedNet] = useState<Net | null>(null)
+  const [flash, blink] = useBlink()
 
   const [credits, setCredits] = useState(session.creditsLeft)
   const [scan, setScan] = useState<Scan | null>(null)
   const [photo, setPhoto] = useState<{ url: string; aspect: number } | null>(null)
   const [rim, setRim] = useState<Pt[]>([])
-  const [found, setFound] = useState<Pt[] | null>(null)
+  const [measured, setMeasured] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const [sheet, setSheet] = useState(false)
@@ -67,6 +73,7 @@ export default function ScanFlow() {
 
   async function onFile(f: File) {
     if (!pondId) return
+    blink()
     setBusy(true)
     setError(null)
     try {
@@ -103,7 +110,7 @@ export default function ScanFlow() {
     )
   }
 
-  if (!ponds.data || !nets.data || askNet === null) {
+  if (!ponds.data || !nets.data) {
     const err = ponds.error ?? nets.error
     return (
       <Page title="สแกนกุ้ง" close>
@@ -125,9 +132,11 @@ export default function ScanFlow() {
   const pond = ponds.data.ponds.find((p) => p.id === pondId) ?? null
   const netList = nets.data.nets
   const pondNet: Net | null = netList.find((n) => n.id === pond?.netId) ?? netList.find((n) => n.isFarmDefault) ?? netList[0] ?? null
-  const farmNet = netList.find((n) => n.isFarmDefault) ?? null
+  const net: Net | null = usedNet ?? scan?.net ?? pondNet
+  const shape = net?.shape ?? 'round'
+  const pick = choice ?? netChoiceFrom(pondNet)
 
-  const steps: Step[] = ['pond', ...(askNet ? (['net'] as Step[]) : []), 'photo', 'rim', 'result']
+  const steps: Step[] = worker ? ['pond', 'photo', 'rim', 'result'] : ['pond', 'net', 'photo', 'rim', 'result']
   const stepNo = steps.indexOf(step === 'measuring' ? 'result' : step) + 1
   const prev = (s: Step): Step | null => {
     const i = steps.indexOf(s)
@@ -139,28 +148,43 @@ export default function ScanFlow() {
   async function measure() {
     if (!scan) return
     setError(null)
-    setFound(null)
+    setMeasured(false)
     setStep('measuring')
     try {
-      const netId = scan.net?.id ?? pondNet?.id ?? ''
-      const r = await measureAtLeast(scan.id, { rim, netId })
+      const r = await api.measure(scan.id, { rim, netId: net?.id ?? '' })
       setScan(r.scan)
       setCredits(r.creditsLeft)
-      setFound((r.scan.result?.shrimp ?? []).map((q) => ({ x: q.x, y: q.y })))
+      setMeasured(true)
     } catch (e) {
       setError(e)
       setStep('rim')
     }
   }
 
-  async function saveNet(shape: NetShape, cm: number) {
+  /** ถัดไป on the ยอ step: use a saved ยอ for this pond, or save the new size for it. */
+  async function saveNet() {
+    const want = netChoiceWants(pick, netList)
+    if (!want || !pond) return
+    setBusy(true)
     setError(null)
     try {
-      if (farmNet) await api.editNet(farmNet.id, { cm, shape })
-      else await api.addNet({ shape, cm, farmDefault: true })
+      let n: Net
+      if ('net' in want) {
+        n = want.net
+        if (pondNet?.id !== n.id) await api.setPondNet(pond.id, n.id)
+      } else {
+        n = await api.addNet({ shape: want.shape, cm: want.cm, pondId: pond.id, farmDefault: netList.length === 0 })
+      }
+      setUsedNet(n)
+      // Back on this step, the saved ยอ is the choice: ถัดไป again must not save it twice.
+      setChoice(netChoiceFrom(n))
       nets.reload()
+      ponds.reload()
+      go('photo')
     } catch (e) {
       setError(e)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -223,7 +247,16 @@ export default function ScanFlow() {
           ) : (
             <Head2 t="ถ่ายเข้าบ่อไหนคะ" d="ผลวัดไซส์จะบันทึกเข้าบ่อที่เลือก" />
           )}
-          <PondPicker data={ponds.data} worker={worker} picked={pondId} onPick={(p) => setPondId(p.id)} />
+          <PondPicker
+            data={ponds.data}
+            worker={worker}
+            picked={pondId}
+            onPick={(p) => {
+              setPondId(p.id)
+              setChoice(null)
+              setUsedNet(null)
+            }}
+          />
           {pond && !worker && pond.caretaker ? (
             <div className="vc soft l5">
               {pond.code} · {pond.caretaker}ดูแล
@@ -233,7 +266,7 @@ export default function ScanFlow() {
         </>
       )
       foot = (
-        <Btn disabled={!pond || credits <= 0} onClick={() => go(askNet ? 'net' : 'photo')}>
+        <Btn disabled={!pond || credits <= 0} onClick={() => go(steps[1]!)}>
           {pond ? `ถัดไป · บ่อ ${pond.code}` : 'ถัดไป'}
         </Btn>
       )
@@ -242,16 +275,16 @@ export default function ScanFlow() {
     case 'net':
       body = (
         <>
-          <NetAsk pondCode={pond?.code ?? ''} saved={farmNet} onSave={(s, cm) => void saveNet(s, cm)} />
+          <NetStep pondCode={pond?.code ?? ''} nets={netList} pondNet={pondNet} choice={pick} onChoice={setChoice} />
           <InlineError error={error} />
         </>
       )
       foot = (
         <>
-          <Btn kind="s" onClick={() => (prev('net') ? go(prev('net')!) : closeOrHome())}>
+          <Btn kind="s" disabled={busy} onClick={() => (prev('net') ? go(prev('net')!) : closeOrHome())}>
             ย้อนกลับ
           </Btn>
-          <Btn disabled={!farmNet} onClick={() => go('photo')}>
+          <Btn busy={busy} disabled={!netChoiceWants(pick, netList) || busy} onClick={() => void saveNet()}>
             ถัดไป
           </Btn>
         </>
@@ -260,8 +293,8 @@ export default function ScanFlow() {
     case 'photo':
       body = (
         <>
-          {pondNet ? <NetChip shape={pondNet.shape} cm={pondNet.cm} /> : null}
-          <PhotoGuide />
+          {worker && net ? <NetChip shape={net.shape} cm={net.cm} /> : null}
+          <PhotoGuide shape={shape} />
           {picker.inputs}
           <InlineError error={error} />
         </>
@@ -281,15 +314,10 @@ export default function ScanFlow() {
       )
       break
     case 'rim': {
-      const ok = rim.length === 4 && fitEllipse(rim) !== null
+      const ok = rim.length === 4 && fitRim(shape, rim) !== null
       body = (
         <>
-          {rim.length < 4 ? (
-            <Head2 t="แตะขอบพื้นยอ 4 จุด" d="แตะตรงที่ตาข่ายพื้นต่อกับผ้าข้างยอ ให้รอบวง" />
-          ) : (
-            <Head2 t="เส้นเหลืองตรงขอบพื้นยอไหม" d="น้ำวางให้ก่อน อาจยังไม่ตรง · ไม่ตรงตรงไหน ลากจุดนั้น หรือแตะจุดแล้วกดลูกศร" />
-          )}
-          {scan && photo ? <RimEditor photoUrl={photo.url} aspect={photo.aspect} pts={rim} onChange={setRim} guess={scan.rimGuess} /> : null}
+          {scan && photo ? <RimEditor photoUrl={photo.url} aspect={photo.aspect} shape={shape} pts={rim} onChange={setRim} guess={scan.rimGuess} /> : null}
           <InlineError error={error} />
         </>
       )
@@ -309,7 +337,14 @@ export default function ScanFlow() {
     case 'measuring':
       body =
         photo && scan ? (
-          <Measuring photoUrl={photo.url} aspect={photo.aspect} rim={rim} found={found} onShown={() => setStep('result')} />
+          <Measuring
+            photoUrl={photo.url}
+            aspect={photo.aspect}
+            shape={shape}
+            rim={rim}
+            shrimp={measured && scan.result ? bandedShrimp(scan.result) : null}
+            onShown={() => setStep('result')}
+          />
         ) : null
       foot = (
         <>
@@ -388,11 +423,11 @@ export default function ScanFlow() {
     <Page
       title={title}
       sub={sub}
-      back={backTo ? () => go(backTo) : undefined}
-      close={step !== 'measuring' && (step === 'pond' || !backTo)}
+      back={step === 'measuring' ? undefined : backTo ? () => go(backTo) : closeOrHome}
       step={[stepNo, steps.length]}
       two={step !== 'pond'}
       foot={foot}
+      flash={flash}
       over={
         sheet && scan ? (
           <NetChangeSheet

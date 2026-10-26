@@ -52,9 +52,9 @@ import type {
 } from '../src/api/types'
 import { NET_CM_MAX, NET_CM_MIN } from '../src/api/types'
 import { addDays, daysBetween, fmtDay, fmtDayYear, fmtTime, pondRange } from '../src/lib/format'
-import { centredGuess, fitEllipse, insideEllipse } from '../src/lib/rim'
+import { centredGuess, fitEllipse, fitRim, insideRim, rimArea, rimBox } from '../src/lib/rim'
 import { isLighter, weightStats } from '../src/lib/sizes'
-import { ACTIVITY, CANDIDATE, DOTS, F10_HISTORY, FIXED, FIXTURE_ASPECT, GUESS, NOTES, PEOPLE, STOCKED, TODAY, Z2, at, nowIso } from './story'
+import { ACTIVITY, CANDIDATE, DOTS, F10_HISTORY, FIXED, FIXTURE_ASPECT, GUESS, NOTES, PEOPLE, SQ_DOTS, SQ_FIXED, SQ_GUESS, STOCKED, TODAY, Z2, at, nowIso } from './story'
 
 export type Persona = 'owner' | 'worker' | 'new' | 'fresh'
 
@@ -109,6 +109,12 @@ function ellipseArea(rim: Pt[]): number {
  * 13.9 g where the true rim reads 17.2 g (F10 in the story, W21 to E5).
  */
 const RIM_EXP = Math.log(13.9 / 17.2) / Math.log(ellipseArea(FIXED) / ellipseArea(GUESS))
+
+/** The area the rim marks for this ยอ shape: a ring, or a 4-corner frame. */
+function rimAreaOf(shape: NetShape, rim: Pt[]): number {
+  const r = fitRim(shape, rim)
+  return r ? rimArea(r) : 0
+}
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
@@ -165,8 +171,9 @@ interface MScan {
   width: number
   height: number
   rimGuess: Pt[]
-  /** The rim on the floor edge, for the mock's weight maths. */
+  /** The rim on the floor edge, for the mock's weight maths, and the ยอ shape it was drawn for. */
   truthRim: Pt[]
+  truthShape: NetShape
   dots: Pt[] | null
   by: string
   at: string
@@ -228,9 +235,9 @@ function curve(abw: number, gPerDay: number, age: number, day: number): number {
   return Math.max(0.3, abw * Math.pow(day / age, p))
 }
 
-function shrimpFor(seed: string, abw: number, cv: number, split: boolean, rim: Pt[], dots: Pt[] | null): ScanResult['shrimp'] {
+function shrimpFor(seed: string, abw: number, cv: number, split: boolean, rim: Pt[], dots: Pt[] | null, shape: NetShape = 'round'): ScanResult['shrimp'] {
   const r = rng(seed)
-  const n = 64
+  const n = dots?.length ?? 64
   let grams = Array.from({ length: n }, (_, i) => {
     const centre = split ? abw * (i % 2 ? 0.8 : 1.2) : abw
     return Math.max(abw * 0.4, centre * (1 + normal(r) * (split ? cv * 0.55 : cv)))
@@ -241,13 +248,15 @@ function shrimpFor(seed: string, abw: number, cv: number, split: boolean, rim: P
   if (dots && dots.length >= n) {
     pts = dots.slice(0, n)
   } else {
-    const e = fitEllipse(rim) ?? fitEllipse(centredGuess())!
+    const fit = fitRim(shape, rim) ?? fitRim(shape, centredGuess(shape))!
+    const b = rimBox(fit)
+    const mid = { x: b.x + b.w / 2, y: b.y + b.h / 2 }
     pts = []
     while (pts.length < n) {
-      const t = 2 * Math.PI * r()
-      const k = Math.sqrt(r()) * 0.86
-      const p = { x: e.cx + Math.cos(t) * e.rx * k, y: e.cy + Math.sin(t) * e.ry * k }
-      if (insideEllipse(e, p)) pts.push(p)
+      // Away from the edge, where a shrimp is cut by the rim.
+      const p = { x: mid.x + (r() - 0.5) * b.w * 0.86, y: mid.y + (r() - 0.5) * b.h * 0.86 }
+      const inner = { x: mid.x + (p.x - mid.x) / 0.86, y: mid.y + (p.y - mid.y) / 0.86 }
+      if (insideRim(fit, inner)) pts.push(p)
     }
   }
   return grams.map((g, i) => ({ x: Math.round(pts[i]!.x * 1000) / 1000, y: Math.round(pts[i]!.y * 1000) / 1000, g }))
@@ -348,6 +357,7 @@ function seedFarm(): MFarm {
         height: size.height,
         rimGuess: fixture ? GUESS : centredGuess(),
         truthRim: fixture ? FIXED : centredGuess(),
+        truthShape: 'round',
         dots: fixture ? DOTS : null,
         by: 'ช่างเอก',
         at: at(TODAY, x.hhmm),
@@ -380,6 +390,7 @@ function savedScan(farm: MFarm, p: MPond, date: string, hhmm: string, abw: numbe
     height: FIXTURE_SIZE.yor!.height,
     rimGuess: GUESS,
     truthRim: FIXED,
+    truthShape: 'round',
     dots: DOTS,
     by: measurer.name,
     at: at(date, hhmm),
@@ -886,7 +897,10 @@ export class Store {
     const p = this.pond(farm, pondId)
     const size = imageSize(bytes) ?? { width: 1600, height: 1200 }
     // The yor fixture (or a crop of it at its aspect): the guess, the true rim and the dots line up.
+    // Into a pond whose ยอ is square, a fixture-sized photo is yor-square.jpg.
     const fixture = size.width >= 400 && Math.abs(size.width / size.height - FIXTURE_ASPECT) < 0.01
+    const shape: NetShape = farm.nets.length ? netFor(farm, p).shape : 'round'
+    const sq = shape === 'square'
     const id = this.nextId('s')
     const photo = `up-${id}`
     photos.set(photo, { bytes, type: type || 'image/jpeg' })
@@ -896,9 +910,10 @@ export class Store {
       photo,
       width: size.width,
       height: size.height,
-      rimGuess: fixture ? GUESS : centredGuess(),
-      truthRim: fixture ? FIXED : centredGuess(),
-      dots: fixture ? DOTS : null,
+      rimGuess: fixture ? (sq ? SQ_GUESS : GUESS) : centredGuess(shape),
+      truthRim: fixture ? (sq ? SQ_FIXED : FIXED) : centredGuess(shape),
+      truthShape: shape,
+      dots: fixture ? (sq ? SQ_DOTS : DOTS) : null,
       by: me.name,
       at: nowIso(),
       status: 'waiting',
@@ -923,12 +938,12 @@ export class Store {
   /** What น้ำ would measure on this photo with this rim and this ยอ. */
   private compute(farm: MFarm, s: MScan, rim: Pt[], net: MNet): ScanResult {
     const p = this.pond(farm, s.pondId)
-    if (!fitEllipse(rim)) throw new MockError(400, 'bad_rim')
+    if (!fitRim(net.shape, rim)) throw new MockError(400, 'bad_rim')
     const trueNet = p.zone === 'E' && farm.id === 'farm-saina' ? 75 : 82
-    const rimK = Math.pow(ellipseArea(s.truthRim) / ellipseArea(rim), RIM_EXP)
+    const rimK = Math.pow(rimAreaOf(s.truthShape, s.truthRim) / rimAreaOf(net.shape, rim), RIM_EXP)
     const netK = Math.pow(net.cm / trueNet, 3)
     const abw = round1(p.trueAbw * rimK * netK)
-    const shrimp = shrimpFor(`${s.id}:${abw}`, abw, p.cv, p.split, rim, s.dots)
+    const shrimp = shrimpFor(`${s.id}:${abw}`, abw, p.cv, p.split, rim, s.dots, net.shape)
     const stats = weightStats(shrimp.map((q) => q.g))
     return {
       abw,

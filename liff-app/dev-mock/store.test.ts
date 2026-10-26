@@ -2,9 +2,10 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { MockError, Store, imageSize } from './store'
-import { FIXED, GUESS } from './story'
+import { FIXED, GUESS, SQ_DOTS, SQ_FIXED, SQ_GUESS } from './story'
 
 const yor = readFileSync(path.join(__dirname, 'fixtures', 'yor.jpg'))
+const yorSquare = readFileSync(path.join(__dirname, 'fixtures', 'yor-square.jpg'))
 
 describe('the mock farm', () => {
   it('tells the canvas story on the owner overview', () => {
@@ -44,6 +45,20 @@ describe('the mock farm', () => {
     expect(fixed.scan.result!.abw).toBe(17.2)
     expect(fixed.creditsLeft).toBe(46) // a re-measure is free
     expect(fixed.scan.result!.remeasuresLeft).toBe(2)
+  })
+
+  it('reads a square ยอ by its 4 corners once the pond uses one (แบบ 2)', () => {
+    const s = new Store()
+    const net = s.addNet('owner', { shape: 'square', cm: 90, pondId: 'p-f10' })
+    expect(net.isFarmDefault).toBe(false)
+    const { scan } = s.upload('owner', 'p-f10', yorSquare, 'image/jpeg')
+    expect(scan.net?.shape).toBe('square')
+    expect(scan.rimGuess).toEqual(SQ_GUESS)
+    const r = s.measure('owner', scan.id, SQ_FIXED, net.id)
+    expect(r.scan.result!.count).toBe(SQ_DOTS.length)
+    expect(r.scan.result!.net.shape).toBe('square')
+    // 4 corners that make no frame are refused, not measured.
+    expect(() => s.measure('owner', scan.id, [SQ_FIXED[0]!, SQ_FIXED[2]!, SQ_FIXED[1]!, { x: 0.5, y: 0.2 }], net.id)).toThrow(/bad_rim/)
   })
 
   it('saves into the pond and moves the tile', () => {

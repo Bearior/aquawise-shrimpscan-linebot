@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, type IconName } from './Icon'
 import { closeLiff } from '@/lib/liff-actions'
+import { useStepMotion } from '@/lib/motion'
 import { useSession, useToast } from '@/session'
 import { P } from '@/routes'
 
@@ -30,6 +31,8 @@ interface PageProps {
   top?: ReactNode
   /** Sheets and dims over the page. */
   over?: ReactNode
+  /** The white shutter flash over the whole screen, while true. */
+  flash?: boolean
   children: ReactNode
 }
 
@@ -41,26 +44,31 @@ export function useCloseLiff(): () => void {
   }
 }
 
+/** Segments under the header, "ขั้นที่ X/Y" at their right end (Day's H2 and SF1). */
 function StepBar({ x, y }: { x: number; y: number }) {
   return (
-    <div className="sb" aria-label={`ขั้นที่ ${x} จาก ${y}`}>
+    <div className="sb" role="progressbar" aria-label={`ขั้นที่ ${x} จาก ${y}`} aria-valuemin={1} aria-valuemax={y} aria-valuenow={x}>
       <div className="seg" aria-hidden="true">
         {Array.from({ length: y }, (_, i) => (
-          <i key={i} className={i < x ? 'on' : ''} />
+          <i key={i} className={i < x ? 'on' : ''}>
+            <b />
+          </i>
         ))}
       </div>
-      <span>
+      <span aria-hidden="true">
         ขั้นที่ {x}/{y}
       </span>
     </div>
   )
 }
 
-export function Page({ title, sub, back, close, step, foot, two, nav, top, over, children }: PageProps) {
+export function Page({ title, sub, back, close, step, foot, two, nav, top, over, flash, children }: PageProps) {
   const navigate = useNavigate()
   const closeLiffOrHome = useCloseLiff()
   const { session } = useSession()
   const { msg } = useToast()
+  // A new step slides in from the side it comes from (MO1).
+  const bodyRef = useStepMotion<HTMLElement>(step ? step[0] : null)
 
   const onBack = typeof back === 'function' ? back : back ? () => navigate(back) : null
 
@@ -68,7 +76,7 @@ export function Page({ title, sub, back, close, step, foot, two, nav, top, over,
     top !== undefined ? (
       top
     ) : (
-      <div className="vb">
+      <div className={`vb${step ? ' flat' : ''}`}>
         {onBack ? (
           <button type="button" className="cb" onClick={onBack} aria-label="ย้อนกลับ">
             <Icon n="back" />
@@ -99,7 +107,9 @@ export function Page({ title, sub, back, close, step, foot, two, nav, top, over,
       {session.env !== 'production' ? <span className="envchip">{session.env === 'staging' ? 'STAGING' : session.env.toUpperCase()}</span> : null}
       {bar}
       {step ? <StepBar x={step[0]} y={step[1]} /> : null}
-      <main className="vbody">{children}</main>
+      <main ref={bodyRef} className="vbody">
+        {children}
+      </main>
       {foot ? <div className={`vf${two ? ' two' : ''}`}>{foot}</div> : null}
       {nav ? (
         <nav className="vnav" aria-label="เมนูหลัก">
@@ -112,6 +122,7 @@ export function Page({ title, sub, back, close, step, foot, two, nav, top, over,
         </nav>
       ) : null}
       {over}
+      {flash ? <div className="flash" aria-hidden="true" /> : null}
       {msg ? (
         <div className="toast" role="status" style={nav || foot ? undefined : { bottom: 24 }}>
           <Icon n="check" />

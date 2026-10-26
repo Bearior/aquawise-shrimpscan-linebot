@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import type { Pt, ScanResult } from '@/api/types'
-import { ellipsePath, fitEllipse } from '@/lib/rim'
+import type { NetShape, Pt, ScanResult } from '@/api/types'
+import { fitRim, rimBox, rimPath } from '@/lib/rim'
 import { BAND_COLOR, BAND_LABEL, bandCuts, bandOf, DIST_COLOR, distribution, distSay, isLighter, type Band } from '@/lib/sizes'
 import { fmt1, fmtDay, fmtDayYear, bangkokDay } from '@/lib/format'
 import { NET_SHAPE_LABEL } from '@/copy/th'
@@ -9,46 +9,54 @@ import { Head2, Tip } from './ui'
 
 const VW = 1000
 
-/** The ยอ photo cut to the rim ellipse, with every shrimp dot. */
+/** The ยอ photo cut to the rim (the ring, or the 4-corner frame of a ยอสี่เหลี่ยม), with every shrimp dot. */
 export function Crop({
   photoUrl,
   aspect,
+  shape = 'round',
   rim,
   shrimp,
   width,
 }: {
   photoUrl: string
   aspect: number
+  shape?: NetShape
   rim: Pt[]
   shrimp: { x: number; y: number; band: Band }[]
   width: number
 }) {
-  const e = fitEllipse(rim)
-  if (!e) return null
-  const s = width / (2 * e.rx)
+  const fit = fitRim(shape, rim)
+  if (!fit) return null
+  const box = rimBox(fit)
+  const s = width / box.w
   const photoW = s
   const photoH = s / aspect
-  const height = 2 * e.ry * photoH
+  const height = box.h * photoH
   const H = VW / aspect
-  const vb = `${((e.cx - e.rx) * VW).toFixed(1)} ${((e.cy - e.ry) * H).toFixed(1)} ${(2 * e.rx * VW).toFixed(1)} ${(2 * e.ry * H).toFixed(1)}`
+  const vb = `${(box.x * VW).toFixed(1)} ${(box.y * H).toFixed(1)} ${(box.w * VW).toFixed(1)} ${(box.h * H).toFixed(1)}`
+  const clip =
+    fit.kind === 'quad'
+      ? `polygon(${fit.q.map((p) => `${(((p.x - box.x) / box.w) * 100).toFixed(2)}% ${(((p.y - box.y) / box.h) * 100).toFixed(2)}%`).join(', ')})`
+      : undefined
   return (
     <span
       className="crop"
       role="img"
-      aria-label="รูปยอเฉพาะในวง จุดสีคือกุ้งแต่ละตัวตามขนาด"
+      aria-label={`รูปยอเฉพาะใน${fit.kind === 'quad' ? 'กรอบ' : 'วง'} จุดสีคือกุ้งแต่ละตัวตามขนาด`}
       style={{
         width,
         height: Number(height.toFixed(1)),
         backgroundImage: `url(${photoUrl})`,
         backgroundSize: `${photoW.toFixed(1)}px ${photoH.toFixed(1)}px`,
-        backgroundPosition: `${(-(e.cx - e.rx) * photoW).toFixed(1)}px ${(-(e.cy - e.ry) * photoH).toFixed(1)}px`,
+        backgroundPosition: `${(-box.x * photoW).toFixed(1)}px ${(-box.y * photoH).toFixed(1)}px`,
+        ...(clip ? { borderRadius: 0, clipPath: clip } : {}),
       }}
     >
       <svg viewBox={vb} aria-hidden="true">
         {shrimp.map((q, i) => (
           <circle key={i} cx={q.x * VW} cy={q.y * H} r={17} fill={BAND_COLOR[q.band]} stroke="#fff" strokeWidth={1.2} vectorEffect="non-scaling-stroke" />
         ))}
-        <path d={ellipsePath(e, VW, H)} fill="none" stroke="#FFD23F" strokeWidth={4} vectorEffect="non-scaling-stroke" />
+        <path d={rimPath(fit, VW, H)} fill="none" stroke="#FFD23F" strokeWidth={4} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       </svg>
     </span>
   )
@@ -221,12 +229,13 @@ export function ResultBody({
     ['l', `${cuts[1]} ก. ขึ้นไป`],
   ]
   const warn = lighterWarning(r)
+  // The result arrives on the measuring screen's step: it fades in, its numbers a beat later (แบบ 2).
   return (
-    <>
+    <div className="rbody w-fade">
       <Head2 t={`ไซส์กุ้ง บ่อ ${pondCode}`} d={`วัดจากกุ้ง ${r.count} ตัวที่เห็นครบตัว · ${fmtDayYear(bangkokDay(r.measuredAt))}`} />
       <div className="res">
-        <Crop photoUrl={photoUrl} aspect={aspect} rim={r.rim} shrimp={bandedShrimp(r)} width={150} />
-        <div className="rn">
+        <Crop photoUrl={photoUrl} aspect={aspect} shape={r.net.shape} rim={r.rim} shrimp={bandedShrimp(r)} width={150} />
+        <div className="rn w-num">
           <span>
             <small>น้ำหนักเฉลี่ย</small>
             <b>{fmt1(r.abw)}</b>
@@ -253,6 +262,6 @@ export function ResultBody({
       <NetUsed shape={r.net.shape} cm={r.net.cm} onEdit={onEditNet} />
       {children}
       {note ? <Tip plain>{note}</Tip> : null}
-    </>
+    </div>
   )
 }

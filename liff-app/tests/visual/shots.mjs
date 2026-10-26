@@ -93,24 +93,28 @@ async function main() {
     await page.close()
   }
 
-  // The scan itself, end to end: owner on F10, the fixture photo, น้ำ's rim, measure.
+  // The scan itself, end to end (แบบ 2): owner on F10, its ยอ, the fixture photo, น้ำ's rim, measure.
   if (!ONLY || ONLY === 'flow') {
     const page = await ctx.newPage()
     watch(page, 'flow')
     await page.goto(withPersona('/liff/app/scan?pond=p-f10', 'owner'))
     await settle(page)
-    await page.screenshot({ path: path.join(OUT, 'flow-1-photo.png'), fullPage: true })
+    await page.screenshot({ path: path.join(OUT, 'flow-1-net.png'), fullPage: true })
+    await page.getByRole('button', { name: /^ถัดไป$/ }).click()
+    await page.getByTestId('photo-file').waitFor({ state: 'attached', timeout: 15_000 })
+    await settle(page)
+    await page.screenshot({ path: path.join(OUT, 'flow-2-photo.png'), fullPage: true })
     await page.getByTestId('photo-file').setInputFiles(FIXTURE)
     await page.getByRole('button', { name: 'วัดเลย' }).waitFor({ timeout: 15_000 })
     await settle(page)
-    await page.screenshot({ path: path.join(OUT, 'flow-2-rim.png'), fullPage: true })
+    await page.screenshot({ path: path.join(OUT, 'flow-3-rim.png'), fullPage: true })
     await page.getByRole('button', { name: 'วัดเลย' }).click()
-    await page.waitForTimeout(900)
-    await page.screenshot({ path: path.join(OUT, 'flow-3-measuring.png'), fullPage: true })
+    await page.waitForTimeout(1700)
+    await page.screenshot({ path: path.join(OUT, 'flow-4-measuring.png'), fullPage: true })
     await page.getByRole('button', { name: /บันทึกเข้าบ่อ/ }).first().waitFor({ timeout: 20_000 })
     await settle(page)
-    await page.screenshot({ path: path.join(OUT, 'flow-4-result.png'), fullPage: true })
-    console.log('shot flow (4)')
+    await page.screenshot({ path: path.join(OUT, 'flow-5-result.png'), fullPage: true })
+    console.log('shot flow (5)')
     await page.close()
   }
 

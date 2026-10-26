@@ -2,6 +2,7 @@
    close to verbatim so the two can be diffed). Large text (.xl) is the default
    on every screen: body 16 to 17px, nothing under 14px, buttons 56px. */
 @import './mock-port.css';
+@import './motion.css';
 
 html,
 body {
@@ -29,6 +30,39 @@ body {
   background: var(--sf);
 }
 
+/* Stepped pages (Day's SF1, แบบ 2): no hairline under the header, the step
+   bar with "ขั้นที่ X/Y" at its right end, the question close under it. The
+   segment fill is the inner <b> (motion.css). */
+.vb.flat {
+  border-bottom: 0;
+}
+.scr .sb {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 16px 12px;
+}
+.scr .sb .seg {
+  flex: 1;
+  min-width: 0;
+}
+.scr .seg i,
+.scr .seg i.on {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ln2);
+  overflow: hidden;
+}
+.scr .sb span {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink2);
+  white-space: nowrap;
+}
+.scr .sb + .vbody {
+  padding-top: 8px;
+}
+
 /* Focus: visible on every control, never only colour. */
 .scr button:focus-visible,
 .scr input:focus-visible,
@@ -40,10 +74,10 @@ body {
   color: var(--hero);
 }
 
-/* Disabled real buttons look like the mock's .off. */
+/* Disabled buttons: 50% (Day's B rules), fading back in over 180 ms (motion.css). */
 .scr .vbtn:disabled,
 .scr button.off {
-  opacity: 0.45;
+  opacity: 0.5;
   pointer-events: none;
 }
 .scr .vbtn.busy {
@@ -102,23 +136,71 @@ body {
   background-position: center;
   background-color: #7d8796;
 }
+/* "ภาพประกอบ" on a drawn example photo (แบบ 2): bottom right on the small
+   ones, top right on the big good example. */
+.ptag {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(13, 12, 24, 0.72);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  pointer-events: none;
+}
+.ptag.okt {
+  top: 14px;
+  right: 12px;
+  bottom: auto;
+}
+
+/* The rim photo (แบบ 2): the photo takes every press; the points are only
+   drawn on it (and stay focusable for the keyboard arrows). */
 .r2 {
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
+.r2.ed {
+  cursor: crosshair;
+}
 .r2 .mk {
-  touch-action: none;
-  cursor: grab;
+  pointer-events: none;
+  border-radius: 50%;
 }
-.r2 .mk:active {
-  cursor: grabbing;
-}
-.r2 .tap {
-  touch-action: none;
+.r2 .mk i {
+  box-sizing: border-box;
+  transition:
+    width 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .r2w .loupe {
   z-index: 3;
+}
+/* The rim step's question: two lines kept for the description, so the photo
+   does not jump when the question changes. */
+.rq {
+  display: grid;
+  gap: 4px;
+}
+.rq .l5 {
+  min-height: 48px;
+}
+.tools .again {
+  margin-left: auto;
+}
+
+/* The scan result as one block, so it can fade in as one (ResultBody). */
+.rbody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.rbody > * {
+  flex: none;
 }
 
 /* Boot, empty and error states. */
@@ -189,16 +271,9 @@ body {
   }
 }
 
-/* Toast: comes in, stays, goes. */
+/* Toast: rises in (motion.css), stays, goes. */
 .toast {
   z-index: 20;
-  animation: toastIn 180ms ease-out both;
-}
-@keyframes toastIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
 }
 
 /* Sheets sit above the page; the dim behind cancels. */

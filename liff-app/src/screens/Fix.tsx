@@ -4,12 +4,12 @@ import { api } from '@/api/client'
 import type { FixResponse, Pt } from '@/api/types'
 import { Page } from '@/components/Page'
 import { Icon } from '@/components/Icon'
-import { Btn, ErrorState, Head2, InlineError, Skeleton } from '@/components/ui'
+import { Btn, ErrorState, InlineError, Skeleton } from '@/components/ui'
 import { RimEditor } from '@/components/rim'
-import { DistBody } from '@/components/result'
+import { DistBody, bandedShrimp } from '@/components/result'
 import { Measuring, aspectOf } from '@/components/scan-steps'
 import { bangkokDay, daysBetween, fmt1, fmtDay, fmtWhen } from '@/lib/format'
-import { fitEllipse } from '@/lib/rim'
+import { fitRim } from '@/lib/rim'
 import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
 import { useSession, useToast } from '@/session'
@@ -28,7 +28,6 @@ export default function Fix() {
   const r = useApi(() => api.scan(id), [id])
   const [edit, setEdit] = useState<Pt[] | null>(null)
   const [step, setStep] = useState<'rim' | 'measuring' | 'compare'>('rim')
-  const [found, setFound] = useState<Pt[] | null>(null)
   const [res, setRes] = useState<FixResponse | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
@@ -56,20 +55,16 @@ export default function Fix() {
     )
   }
   const rim = edit ?? old.rim
+  const shape = old.net.shape
   const aspect = aspectOf(scan)
   const sub = `${scan.measuredBy ?? scan.photoBy}สแกน ${fmtWhen(old.measuredAt, session.today)} · วัดใหม่ไม่ใช้เครดิต`
 
   async function remeasure() {
     setError(null)
-    setFound(null)
+    setRes(null)
     setStep('measuring')
-    const t0 = Date.now()
     try {
-      const f = await api.fix(scan.id, rim)
-      const wait = 1600 - (Date.now() - t0)
-      if (wait > 0) await new Promise((res) => setTimeout(res, wait))
-      setRes(f)
-      setFound(f.after.shrimp.map((q) => ({ x: q.x, y: q.y })))
+      setRes(await api.fix(scan.id, rim))
     } catch (e) {
       setError(e)
       setStep('rim')
@@ -107,7 +102,14 @@ export default function Fix() {
           </>
         }
       >
-        <Measuring photoUrl={scan.photoUrl} aspect={aspect} rim={rim} found={found} onShown={() => setStep('compare')} />
+        <Measuring
+          photoUrl={scan.photoUrl}
+          aspect={aspect}
+          shape={shape}
+          rim={rim}
+          shrimp={res ? bandedShrimp(res.after) : null}
+          onShown={() => setStep('compare')}
+        />
       </Page>
     )
   }
@@ -172,14 +174,13 @@ export default function Fix() {
           <Btn kind="s" onClick={() => navigate(back)}>
             ยกเลิก
           </Btn>
-          <Btn disabled={!(rim.length === 4 && fitEllipse(rim)) || old.remeasuresLeft <= 0} onClick={() => void remeasure()}>
+          <Btn disabled={!(rim.length === 4 && fitRim(shape, rim)) || old.remeasuresLeft <= 0} onClick={() => void remeasure()}>
             วัดใหม่
           </Btn>
         </>
       }
     >
-      <Head2 t="ขยับจุดให้ตรงขอบพื้นยอ" d="เส้นประขาว คือขอบที่ใช้วัดครั้งก่อน" />
-      <RimEditor photoUrl={scan.photoUrl} aspect={aspect} pts={rim} onChange={setEdit} guess={scan.rimGuess} ghost={old.rim} placedBy="old" />
+      <RimEditor photoUrl={scan.photoUrl} aspect={aspect} shape={shape} pts={rim} onChange={setEdit} guess={scan.rimGuess} ghost={old.rim} placedBy="old" />
       {old.remeasuresLeft <= 0 ? (
         <span className="fielderr" role="alert">
           {ERR.remeasureLimit}

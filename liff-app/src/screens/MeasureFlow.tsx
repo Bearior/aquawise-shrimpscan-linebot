@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '@/api/client'
-import type { NetShape, Pt, SaveResponse, Scan } from '@/api/types'
+import type { Net, Pt, SaveResponse, Scan } from '@/api/types'
 import { Page, useCloseLiff } from '@/components/Page'
-import { Btn, ErrorState, InlineError, Head2, Pill, Skeleton } from '@/components/ui'
-import { NetAsk } from '@/components/nets'
-import { ResultBody } from '@/components/result'
+import { Btn, ErrorState, InlineError, Pill, Skeleton } from '@/components/ui'
+import { NetStep, netChoiceFrom, netChoiceWants, type NetChoice } from '@/components/nets'
+import { ResultBody, bandedShrimp } from '@/components/result'
 import { NetChangeSheet } from '@/components/net-change'
 import { RimEditor } from '@/components/rim'
 import { AskAgainSheet } from '@/components/ask-again'
-import { Measuring, aspectOf, measureAtLeast } from '@/components/scan-steps'
-import { fitEllipse } from '@/lib/rim'
+import { Measuring, aspectOf } from '@/components/scan-steps'
+import { centredGuess, fitRim } from '@/lib/rim'
 import { fmt1, fmtDay, fmtTime } from '@/lib/format'
 import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
@@ -21,8 +21,9 @@ type Done = { scan: Scan; saved: SaveResponse } | { scan: Scan; askedAt: string 
 
 /**
  * Measure the photos the owner ticked in รูปรอสแกน (O14 to O17). The worker
- * already chose the pond and took the photo, so only the ยอ (first time for
- * the farm), the rim and the result are left, then a summary.
+ * already chose the pond and took the photo, so each photo has the rest of
+ * แบบ 2's steps: the ยอ (this pond's already chosen), the rim, then measuring
+ * and the result. A summary after the last one.
  */
 export default function MeasureFlow() {
   const [params] = useSearchParams()
@@ -37,14 +38,15 @@ export default function MeasureFlow() {
   const scanId = ids[i] ?? null
   const loaded = useApi(() => (scanId ? api.scan(scanId) : Promise.resolve(null)), [scanId])
   const nets = useApi(() => api.nets())
-  const [askNet, setAskNet] = useState<boolean | null>(null)
-  if (askNet === null && nets.data) setAskNet(nets.data.nets.length === 0)
 
   // The scan being worked on, after measure or a ยอ change; reset per photo.
   const [cur, setCur] = useState<{ id: string; scan: Scan } | null>(null)
   const [rimFor, setRimFor] = useState<{ id: string; pts: Pt[] } | null>(null)
   const [step, setStep] = useState<Step | null>(null)
-  const [found, setFound] = useState<Pt[] | null>(null)
+  // The ยอ step's answer for this photo, and the ยอ it saved.
+  const [choice, setChoice] = useState<NetChoice | null>(null)
+  const [usedNet, setUsedNet] = useState<Net | null>(null)
+  const [measured, setMeasured] = useState(false)
   const [credits, setCredits] = useState(session.creditsLeft)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
@@ -66,7 +68,7 @@ export default function MeasureFlow() {
   if (i >= ids.length) return <Summary done={done} credits={credits} target={farm.targetPerKg} onOverview={() => navigate(P.overview)} onChat={closeOrHome} />
 
   const base = loaded.data
-  if (!base || !nets.data || askNet === null) {
+  if (!base || !nets.data) {
     const err = loaded.error ?? nets.error
     return (
       <Page title={`วัดรูป ${i + 1}/${ids.length}`} back={P.inbox}>
@@ -78,8 +80,12 @@ export default function MeasureFlow() {
   const scan = cur && cur.id === base.id ? cur.scan : base
   const rim = rimFor && rimFor.id === base.id ? rimFor.pts : (base.result?.rim ?? base.rimGuess)
   const setRim = (pts: Pt[]) => setRimFor({ id: base.id, pts })
-  const farmNet = nets.data.nets.find((n) => n.isFarmDefault) ?? null
-  const steps: Step[] = [...(askNet && i === 0 ? (['net'] as Step[]) : []), 'rim', 'result']
+  const netList = nets.data.nets
+  const pondNet = scan.net ? (netList.find((n) => n.id === scan.net!.id) ?? scan.net) : null
+  const net = usedNet ?? pondNet
+  const shape = net?.shape ?? 'round'
+  const pick = choice ?? netChoiceFrom(pondNet)
+  const steps: Step[] = ['net', 'rim', 'result']
   const at: Step = step ?? steps[0]!
   const stepNo = steps.indexOf(at === 'measuring' ? 'result' : at) + 1
   const aspect = aspectOf(scan)
@@ -89,7 +95,9 @@ export default function MeasureFlow() {
     setCur(null)
     setRimFor(null)
     setStep(null)
-    setFound(null)
+    setChoice(null)
+    setUsedNet(null)
+    setMeasured(false)
     setError(null)
     setSheet(null)
     setI((n) => n + 1)
@@ -100,27 +108,43 @@ export default function MeasureFlow() {
     setStep(s)
   }
 
-  async function saveNet(shape: NetShape, cm: number) {
+  /** ถัดไป on the ยอ step: this pond's ยอ from now on, saved new if typed. */
+  async function saveNet() {
+    const want = netChoiceWants(pick, netList)
+    if (!want) return
+    setBusy(true)
     setError(null)
     try {
-      if (farmNet) await api.editNet(farmNet.id, { cm, shape })
-      else await api.addNet({ shape, cm, farmDefault: true })
+      let n: Net
+      if ('net' in want) {
+        n = want.net
+        if (pondNet?.id !== n.id) await api.setPondNet(scan.pondId, n.id)
+      } else {
+        n = await api.addNet({ shape: want.shape, cm: want.cm, pondId: scan.pondId, farmDefault: netList.length === 0 })
+      }
+      // น้ำ guessed the rim for the ยอ it knew; another shape starts from a centred one.
+      if (n.shape !== shape) setRim(centredGuess(n.shape))
+      setUsedNet(n)
+      // Back on this step, the saved ยอ is the choice: ถัดไป again must not save it twice.
+      setChoice(netChoiceFrom(n))
       nets.reload()
+      go('rim')
     } catch (e) {
       setError(e)
+    } finally {
+      setBusy(false)
     }
   }
 
   async function measure() {
     setError(null)
-    setFound(null)
+    setMeasured(false)
     setStep('measuring')
     try {
-      const netId = scan.net?.id ?? farmNet?.id ?? nets.data?.nets[0]?.id ?? ''
-      const r = await measureAtLeast(scan.id, { rim, netId })
+      const r = await api.measure(scan.id, { rim, netId: net?.id ?? '' })
       setCur({ id: base!.id, scan: r.scan })
       setCredits(r.creditsLeft)
-      setFound((r.scan.result?.shrimp ?? []).map((q) => ({ x: q.x, y: q.y })))
+      setMeasured(true)
     } catch (e) {
       setError(e)
       setStep('rim')
@@ -152,16 +176,16 @@ export default function MeasureFlow() {
     case 'net':
       body = (
         <>
-          <NetAsk pondCode={scan.pondCode} saved={farmNet} onSave={(s, cm) => void saveNet(s, cm)} />
+          <NetStep pondCode={scan.pondCode} nets={netList} pondNet={pondNet} choice={pick} onChoice={setChoice} />
           <InlineError error={error} />
         </>
       )
       foot = (
         <>
-          <Btn kind="s" onClick={() => navigate(P.inbox)}>
+          <Btn kind="s" disabled={busy} onClick={() => navigate(P.inbox)}>
             ย้อนกลับ
           </Btn>
-          <Btn disabled={!farmNet} onClick={() => go('rim')}>
+          <Btn busy={busy} disabled={!netChoiceWants(pick, netList) || busy} onClick={() => void saveNet()}>
             ถัดไป
           </Btn>
         </>
@@ -170,17 +194,16 @@ export default function MeasureFlow() {
     case 'rim':
       body = (
         <>
-          <Head2 t="เส้นเหลืองตรงขอบพื้นยอไหม" d="น้ำวางให้ก่อน อาจยังไม่ตรง · ไม่ตรงตรงไหน ลากจุดนั้น หรือแตะจุดแล้วกดลูกศร" />
-          <RimEditor key={scan.id} photoUrl={scan.photoUrl} aspect={aspect} pts={rim} onChange={setRim} guess={scan.rimGuess} />
+          <RimEditor key={scan.id} photoUrl={scan.photoUrl} aspect={aspect} shape={shape} pts={rim} onChange={setRim} guess={scan.rimGuess} />
           <InlineError error={error} />
         </>
       )
       foot = (
         <>
-          <Btn kind="s" onClick={() => (steps[0] === 'net' ? go('net') : navigate(P.inbox))}>
+          <Btn kind="s" onClick={() => go('net')}>
             ย้อนกลับ
           </Btn>
-          <Btn disabled={!(rim.length === 4 && fitEllipse(rim))} onClick={() => void measure()}>
+          <Btn disabled={!(rim.length === 4 && fitRim(shape, rim))} onClick={() => void measure()}>
             วัดเลย
           </Btn>
           {askLink}
@@ -188,7 +211,16 @@ export default function MeasureFlow() {
       )
       break
     case 'measuring':
-      body = <Measuring photoUrl={scan.photoUrl} aspect={aspect} rim={rim} found={found} onShown={() => setStep('result')} />
+      body = (
+        <Measuring
+          photoUrl={scan.photoUrl}
+          aspect={aspect}
+          shape={shape}
+          rim={rim}
+          shrimp={measured && scan.result ? bandedShrimp(scan.result) : null}
+          onShown={() => setStep('result')}
+        />
+      )
       foot = (
         <>
           <Btn kind="s" disabled>
@@ -231,7 +263,7 @@ export default function MeasureFlow() {
     <Page
       title={`วัดรูป ${i + 1}/${ids.length} · ${scan.pondCode}`}
       sub={`${scan.photoBy}ส่ง ${fmtTime(scan.photoAt)} · เหลือ ${credits} เครดิต`}
-      back={at === 'measuring' ? undefined : P.inbox}
+      back={at === 'measuring' ? undefined : at === 'net' ? P.inbox : () => go(at === 'result' ? 'rim' : 'net')}
       step={[stepNo, steps.length]}
       two
       foot={foot}

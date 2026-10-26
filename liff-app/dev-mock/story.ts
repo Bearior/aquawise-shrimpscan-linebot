@@ -98,6 +98,36 @@ export const DOTS: Pt[] = [...DOTS_PX].sort((a, b) => BAND_ORDER[a[2]]! - BAND_O
 /** The fixture photo's size: 760 x 674 in the mock, 520 x 461 as shipped. */
 export const FIXTURE_ASPECT = 760 / 674
 
+/**
+ * The square ยอ fixture (dev-mock/fixtures/yor-square.jpg, a Codex-made
+ * illustration, same aspect as yor.jpg): แบบ 2's corners and its 54 shrimp.
+ * A fixture-sized upload into a pond whose ยอ is square reads as this one.
+ */
+const SQ_GUESS_PX: [number, number][] = [
+  [88, 46],
+  [694, 62],
+  [683, 646],
+  [72, 626],
+]
+const SQ_FIXED_PX: [number, number][] = [
+  [107.3, 68.2],
+  [667.4, 77.3],
+  [680.9, 640.7],
+  [73.8, 623.6],
+]
+export const SQ_GUESS: Pt[] = SQ_GUESS_PX.map(norm)
+export const SQ_FIXED: Pt[] = SQ_FIXED_PX.map(norm)
+const SQ_DOTS_PX: [number, number, string][] = [
+  [385, 265, 'm'], [395, 193, 'm'], [408, 126, 'm'], [417, 264, 'm'], [475, 124, 's'], [473, 155, 's'], [462, 194, 's'], [442, 277, 'm'],
+  [540, 169, 's'], [483, 235, 's'], [526, 240, 's'], [609, 185, 's'], [598, 227, 'm'], [512, 281, 'l'], [555, 270, 's'], [514, 314, 'm'],
+  [435, 342, 'l'], [592, 362, 'l'], [535, 383, 'm'], [595, 448, 'm'], [469, 400, 'l'], [519, 433, 'l'], [596, 538, 'm'], [540, 495, 'm'],
+  [507, 552, 'm'], [401, 398, 'm'], [443, 579, 'm'], [426, 537, 'l'], [372, 512, 'm'], [375, 438, 's'], [342, 480, 'm'], [265, 567, 's'],
+  [287, 480, 's'], [338, 401, 'm'], [203, 503, 's'], [108, 553, 's'], [132, 517, 'm'], [203, 438, 'm'], [214, 391, 'm'], [141, 371, 'l'],
+  [279, 358, 'm'], [131, 298, 's'], [205, 300, 'm'], [146, 262, 'm'], [261, 290, 's'], [188, 216, 's'], [231, 236, 'm'], [330, 291, 'l'],
+  [237, 165, 'm'], [285, 190, 'm'], [294, 125, 'm'], [338, 238, 'm'], [331, 200, 'm'], [381, 307, 'm'],
+]
+export const SQ_DOTS: Pt[] = [...SQ_DOTS_PX].sort((a, b) => BAND_ORDER[a[2]]! - BAND_ORDER[b[2]]!).map(([x, y]) => norm([x, y]))
+
 /** A04's note from ลุงพล (W21's chips, shown on O23). */
 export const NOTES: Record<string, { by: string; hhmm: string; text: string }> = {
   A04: { by: 'ลุงพล', hhmm: '07:28', text: 'กินดี · เปลือกเงา' },

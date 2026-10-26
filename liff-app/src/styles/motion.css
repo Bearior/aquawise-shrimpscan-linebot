@@ -1,0 +1,195 @@
+/* Motion. Day's LIFF Design Guideline MO1 (line-bot): press 120 · select 160
+   · fade 180 · step 240 · bar 240 · height 300, plus the scan moves of แบบ 2
+   (docs/shrimp-scan-rim-redesign/M2.dc.html). The numbers live in
+   src/lib/motion.ts; the step slide runs there (WAAPI), the rest here.
+   Nothing rests on a transform: keyframes fill `backwards` only, and a press
+   lives on :active. Reduced motion turns every move into a cut (bottom). */
+
+@keyframes wFade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes wRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes wPop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+@keyframes wCheck {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+@keyframes wDraw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes wFlash {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes wSheet {
+  from {
+    transform: translateY(100%);
+  }
+}
+/* Things that must be seen arrive by rising, not fading (MO1 guardrail). */
+@keyframes wToast {
+  from {
+    transform: translateY(16px);
+  }
+}
+
+.w-fade {
+  animation: wFade 180ms ease-out backwards;
+}
+.w-rise {
+  animation: wRise 240ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.w-pop {
+  animation: wPop 260ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+/* Numbers land a beat after their card. */
+.w-num {
+  animation: wFade 180ms ease-out 120ms backwards;
+}
+svg .w-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+/* The rim ring drawing on: the path carries pathLength="1". */
+.w-draw {
+  stroke-dasharray: 1;
+  animation: wDraw 420ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+/* Press: every button dents 0.97 over 120 ms; choice cards 0.985. A colour
+   change on select eases over 160 ms; disabled to enabled fades over 180. */
+.scr button {
+  transition:
+    transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 180ms ease-out,
+    background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.scr button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.scr button:is(.pd, .xpd, .snr, .rcard, .popt, .tile, .li):active:not(:disabled),
+.scr .nsh button:active:not(:disabled) {
+  transform: scale(0.985);
+}
+.scr button:is(.dim, .mk):active:not(:disabled) {
+  transform: none;
+}
+.scr .vbtn:disabled {
+  opacity: 0.5;
+}
+
+/* Chosen: the check pops in; the ring of a saved-size row fills. */
+.nsh button.on .nck {
+  animation: wCheck 160ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.snr .ck {
+  transition:
+    background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Step bar: the next segment fills over 240 ms. */
+.seg i b {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--hero);
+  transition: width 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.seg i.on b {
+  width: 100%;
+}
+
+/* Sheets rise from the bottom; the dim fades in. */
+.scr .sheet {
+  animation: wSheet 300ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
+}
+.scr .dim {
+  animation: wFade 180ms ease-out backwards;
+}
+.toast {
+  animation: wToast 240ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+/* Measuring (แบบ 2): outside the rim darkens over 600 ms, a sweep turns
+   inside it, each shrimp pops in white and takes its size colour over 400. */
+.r2 .mdim {
+  transition: fill 600ms ease-out;
+}
+.r2 .mdot {
+  transition: fill 400ms ease-out;
+}
+.r2 .sweep {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* The shutter flash after a photo is taken. */
+.flash {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  background: #fff;
+  pointer-events: none;
+  opacity: 0;
+  animation: wFlash 240ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .w-fade,
+  .w-rise,
+  .w-pop,
+  .w-num,
+  .w-draw,
+  .nsh button.on .nck,
+  .scr .sheet,
+  .scr .dim,
+  .toast {
+    animation: none;
+  }
+  .scr button,
+  .snr .ck,
+  .seg i b,
+  .r2 .mdim,
+  .r2 .mdot {
+    transition: none;
+  }
+  .scr button:active:not(:disabled) {
+    transform: none;
+  }
+  .flash {
+    display: none;
+  }
+}

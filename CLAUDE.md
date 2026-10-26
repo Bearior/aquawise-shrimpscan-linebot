@@ -76,6 +76,23 @@ the bypass out of builds.
 - Screens follow `docs/shrimp-scan-flow-mock` in the umbrella (round 3). Its
   `HANDOFF.md` names every screen (O1 to O38, W1 to W23, E1 to E6); the screen
   files say which ids they implement.
+- **The scan itself follows แบบ 2** of the ขอบยอ canvas
+  (`docs/shrimp-scan-rim-redesign/M2.dc.html` in the umbrella), steps and
+  motion both: pond, ยอ (shape cards, then a saved size or one typed once),
+  photo, rim (4 points on a ยอกลม, 4 corners on a ยอสี่เหลี่ยม), then
+  measuring and the result on the same last step. The owner sees the ยอ step
+  every time (5 steps, this pond's ยอ already chosen); a worker has no ยอ
+  step (4 steps, the ยอ as a chip on the photo step). The inbox measure flow
+  has ยอ, rim, result per photo. `src/lib/rim.ts` holds the geometry for both
+  shapes (`fitRim`).
+- **Motion is Day's MO1** (line-bot branch `day-design-guidelines`,
+  `docs/design/liff-design-guidelines/`): press 120, select 160, fade 180,
+  step 240 (new content slides 24 px in from the side it comes from), bar
+  240, height 300, plus แบบ 2's ring draw-on 420, point pop 260, shutter
+  flash and the measuring sweep. Tokens in `src/lib/motion.ts`, the rest in
+  `src/styles/motion.css`. Never a running number, a shake, a sound, or a
+  move that makes the person wait; nothing rests on a transform; reduced
+  motion cuts every move.
 - `src/api/types.ts` is **the contract** for every `/api/liff/*` call, and
   `src/api/client.ts` is the only place a path is spelled. The server routes
   for it are not built: every `/api/liff/*` route except `/me` answers 501
@@ -87,7 +104,9 @@ the bypass out of builds.
   `tsc` time. `?as=owner|worker|new|fresh` picks the persona;
   `POST /api/mock/reset` starts over. Upload `dev-mock/fixtures/yor.jpg` to get
   the canvas's rim guess and dots (F10 reads 13.9 g on the guess, 17.2 g on the
-  floor edge).
+  floor edge). Into a pond whose ยอ is square, upload
+  `dev-mock/fixtures/yor-square.jpg` (an illustration) for แบบ 2's corners
+  and its 54 shrimp.
 - `pnpm shots` (with `pnpm mock` running) screenshots every screen at 390 px
   into `tests/visual/out/`; `TALL=1` for the whole scroll.
 - `/liff/app/*` waits for `useLiff().isReady` before any screen mounts

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NET_CM_MAX, NET_CM_MIN, type Net, type NetShape } from '@/api/types'
 import { NET_SHAPE_LABEL } from '@/copy/th'
 import { Icon } from './Icon'
-import { Chip, Head2, Head3, MBtn, Saved, Tip } from './ui'
+import { Chip, Head2, Head3, MBtn, Tip } from './ui'
 import { Sheet } from './Page'
 
 export function validCm(n: number): boolean {
@@ -19,11 +19,13 @@ export function NetField({
   onValue,
   onCommit,
   autoFocus,
+  label = 'ยอกว้าง เซนติเมตร',
 }: {
   value: string
   onValue: (v: string) => void
   onCommit?: (n: number) => void
   autoFocus?: boolean
+  label?: string
 }) {
   const ref = useRef<HTMLInputElement>(null)
   const n = Number(value)
@@ -54,7 +56,7 @@ export function NetField({
             pattern="[0-9]*"
             enterKeyHint="done"
             maxLength={3}
-            aria-label="ยอกว้าง เซนติเมตร"
+            aria-label={label}
             value={value}
             onChange={(e) => onValue(e.target.value.replace(/\D/g, '').slice(0, 3))}
             onBlur={() => {
@@ -79,55 +81,102 @@ export function NetField({
   )
 }
 
-const RoundArt = ({ cm }: { cm: string }) => (
+/** The tape across the floor, edge to edge, with the size on it (แบบ 2): only on the chosen card once there is a size. */
+function Ruler({ x0, x1, cm }: { x0: number; x1: number; cm: number }) {
+  const label = `${cm} ซม.`
+  const w = 14 + label.length * 6.6
+  return (
+    <g className="w-fade">
+      <path d={`M${x0} 48H${x1}M${x0} 42V54M${x1} 42V54`} stroke="#F08A00" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+      <rect x={60 - w / 2} y={39} width={w} height={18} rx={9} fill="#F08A00" />
+      <text x="60" y="52" textAnchor="middle" fontSize="12" fontWeight="700" fill="#fff" fontFamily="'JetBrains Mono', ui-monospace, monospace">
+        {label}
+      </text>
+    </g>
+  )
+}
+const RoundArt = ({ cm }: { cm: number | null }) => (
   <svg viewBox="0 0 120 96" aria-hidden="true">
     <circle cx="60" cy="48" r="42" fill="#E3E9F2" stroke="#2D6BC4" strokeWidth="5" />
     <circle cx="60" cy="48" r="34" fill="#C9D3DF" stroke="#8796A8" strokeWidth="1.5" />
     <path d="M30 48H90M60 18V78M39 27L81 69M81 27L39 69" stroke="#AAB6C4" strokeWidth="1" />
-    <path d="M26 48H94M26 42V54M94 42V54" stroke="#F08A00" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-    <rect x="37" y="56" width="46" height="17" rx="8.5" fill="#F08A00" />
-    <text x="60" y="68.5" textAnchor="middle" fontSize="11" fontWeight="700" fill="#fff" fontFamily="Noto Sans Thai">
-      {cm || '?'} ซม.
-    </text>
+    {cm ? <Ruler x0={26} x1={94} cm={cm} /> : null}
   </svg>
 )
-const SquareArt = () => (
+const SquareArt = ({ cm }: { cm: number | null }) => (
   <svg viewBox="0 0 120 96" aria-hidden="true">
     <rect x="16" y="6" width="88" height="84" rx="4" fill="#E3E9F2" stroke="#2D6BC4" strokeWidth="5" />
     <rect x="24" y="14" width="72" height="68" fill="#C9D3DF" stroke="#8796A8" strokeWidth="1.5" />
     <path d="M24 48H96M60 14V82M24 31H96M24 65H96M42 14V82M78 14V82" stroke="#AAB6C4" strokeWidth="1" />
+    {cm ? <Ruler x0={24} x1={96} cm={cm} /> : null}
   </svg>
 )
 
+/** The ยอ step's answer so far: the shape, then a saved size or a new one typed in. */
+export interface NetChoice {
+  shape: NetShape | null
+  netId: string | null
+  /** Typing a new size (always, when the farm has none of this shape saved). */
+  adding: boolean
+  typed: string
+}
+
+/** Start from the ยอ this pond used last time, or from nothing on a farm's first scan. */
+export function netChoiceFrom(pondNet: Net | null): NetChoice {
+  return pondNet ? { shape: pondNet.shape, netId: pondNet.id, adding: false, typed: '' } : { shape: null, netId: null, adding: false, typed: '' }
+}
+
+/** What ถัดไป does with the choice: use a saved ยอ, save a new size, or nothing yet. */
+export function netChoiceWants(c: NetChoice, nets: Net[]): { net: Net } | { shape: NetShape; cm: number } | null {
+  if (!c.shape) return null
+  const saved = nets.filter((n) => n.shape === c.shape)
+  if (c.adding || saved.length === 0) return validCm(Number(c.typed)) ? { shape: c.shape, cm: Number(c.typed) } : null
+  const net = saved.find((n) => n.id === c.netId)
+  return net ? { net } : null
+}
+
 /**
- * The ยอ question, first time for the farm only (O14, O19a): the shape, then
- * the width typed in. Saves when the keypad closes; the green line confirms.
+ * Step 2 of สแกนกุ้ง (แบบ 2, O19a): which ยอ this pond uses. The shape as two
+ * cards, then its size: the sizes น้ำ already knows for that shape as rows, or
+ * typed once on the number keypad (no preset sizes). Nothing is saved until
+ * ถัดไป; the screen only holds the choice.
  */
-export function NetAsk({ pondCode, saved, onSave }: { pondCode: string; saved: Net | null; onSave: (shape: NetShape, cm: number) => void }) {
-  const [shape, setShape] = useState<NetShape>(saved?.shape ?? 'round')
-  const [value, setValue] = useState(saved ? String(saved.cm) : '')
-  const commit = (cm: number, sh: NetShape = shape) => {
-    if (!validCm(cm)) return
-    if (saved && saved.cm === cm && saved.shape === sh) return
-    onSave(sh, cm)
+export function NetStep({
+  pondCode,
+  nets,
+  pondNet,
+  choice,
+  onChoice,
+}: {
+  pondCode: string
+  nets: Net[]
+  pondNet: Net | null
+  choice: NetChoice
+  onChoice: (c: NetChoice) => void
+}) {
+  const { shape } = choice
+  const saved = shape ? nets.filter((n) => n.shape === shape) : []
+  const typing = choice.adding || saved.length === 0
+  const want = netChoiceWants(choice, nets)
+  const cm = want ? ('net' in want ? want.net.cm : want.cm) : null
+
+  const pickShape = (s: NetShape) => {
+    if (s === shape) return
+    const same = nets.filter((n) => n.shape === s)
+    const keep = pondNet?.shape === s ? pondNet : same.length === 1 ? same[0]! : null
+    onChoice({ shape: s, netId: keep?.id ?? null, adding: false, typed: choice.typed })
   }
+
   return (
     <>
-      <Head2 t={`บ่อ ${pondCode} ใช้ยอแบบไหนคะ`} d="น้ำเทียบตัวกุ้งกับขนาดยอ ใส่ครั้งเดียว น้ำจำไว้ให้ ครั้งหน้าไม่ถามอีก" />
+      <Head2
+        t={`บ่อ ${pondCode} ใช้ยอแบบไหนคะ`}
+        d={nets.length ? 'น้ำเลือกยอที่บ่อนี้ใช้ไว้ให้ วันนี้ใช้ยออื่น แตะเปลี่ยนได้เลยค่ะ' : 'น้ำเทียบตัวกุ้งกับขนาดยอ ตอบครั้งเดียว ครั้งหน้าน้ำจำไว้ให้'}
+      />
       <div className="nsh" role="radiogroup" aria-label="รูปทรงยอ">
         {(['round', 'square'] as NetShape[]).map((s) => (
-          <button
-            key={s}
-            type="button"
-            role="radio"
-            aria-checked={shape === s}
-            className={shape === s ? 'on' : ''}
-            onClick={() => {
-              setShape(s)
-              if (validCm(Number(value))) commit(Number(value), s)
-            }}
-          >
-            {s === 'round' ? <RoundArt cm={value} /> : <SquareArt />}
+          <button key={s} type="button" role="radio" aria-checked={shape === s} className={shape === s ? 'on' : ''} onClick={() => pickShape(s)}>
+            {s === 'round' ? <RoundArt cm={shape === s ? cm : null} /> : <SquareArt cm={shape === s ? cm : null} />}
             {NET_SHAPE_LABEL[s]}
             <span className="nck">
               <Icon n="check" />
@@ -135,18 +184,38 @@ export function NetAsk({ pondCode, saved, onSave }: { pondCode: string; saved: N
           </button>
         ))}
       </div>
-      <div className="grp">
-        <Head3 t="ยอกว้างเท่าไหร่" d="ขึงสายวัดผ่านกลางยอ จากขอบพื้นตาข่ายฝั่งหนึ่งถึงอีกฝั่ง" />
-        <NetField value={value} onValue={setValue} onCommit={(n) => commit(n)} />
-        <span className="l5 mut">ใส่ตามที่วัดได้ ไม่ต้องปัดเป็นเลขกลม</span>
-      </div>
-      {saved ? (
-        <div style={{ display: 'grid', gap: 2 }}>
-          <Saved>บันทึกแล้ว · ใช้ {saved.cm} ซม. กับทุกบ่อในฟาร์ม</Saved>
-          <span className="l5 mut">บ่อไหนใช้ยอต่างกัน ตั้งรายบ่อได้ที่หน้ายอของฟาร์ม</span>
+      {shape ? (
+        <div className="grp w-rise" key={shape}>
+          <Head3
+            t={shape === 'round' ? 'ยอกว้างเท่าไหร่' : 'ยอด้านละเท่าไหร่'}
+            d={shape === 'round' ? 'ขึงสายวัดผ่านกลางยอ จากขอบพื้นตาข่ายฝั่งหนึ่งถึงอีกฝั่ง' : 'วัดด้านใดด้านหนึ่ง จากมุมพื้นตาข่ายถึงอีกมุม'}
+          />
+          {saved.length ? (
+            <div role="radiogroup" aria-label={shape === 'round' ? 'ยอกว้างเท่าไหร่' : 'ยอด้านละเท่าไหร่'}>
+              <NetRows
+                nets={saved}
+                picked={choice.adding ? null : choice.netId}
+                onPick={(n) => onChoice({ ...choice, netId: n.id, adding: false })}
+                adding={choice.adding}
+                onAdd={() => onChoice({ ...choice, netId: null, adding: true })}
+              />
+            </div>
+          ) : null}
+          {typing ? (
+            <div className={`grp${saved.length ? ' w-rise' : ''}`}>
+              <b className="l5">{shape === 'round' ? 'ยอของพี่กว้างกี่เซนติเมตร' : 'ยอของพี่ด้านละกี่เซนติเมตร'}</b>
+              <NetField
+                value={choice.typed}
+                onValue={(v) => onChoice({ ...choice, typed: v })}
+                autoFocus={saved.length > 0}
+                label={shape === 'round' ? 'ยอกว้าง เซนติเมตร' : 'ยอด้านละ เซนติเมตร'}
+              />
+              <span className="l5 mut">ใส่ตามที่วัดได้ ไม่ต้องปัดเป็นเลขกลม · น้ำจำไว้ให้ ครั้งหน้าไม่ต้องใส่อีก</span>
+            </div>
+          ) : null}
+          <Tip>ไม่แน่ใจขนาด ลองขึงสายวัดดูก่อนนะคะ · ขนาดคลาด 2 ซม. น้ำหนักกุ้งอาจคลาดได้ราว 6 ถึง 13%</Tip>
         </div>
       ) : null}
-      <Tip>ไม่แน่ใจขนาด ลองขึงสายวัดดูก่อนนะคะ · ขนาดคลาด 2 ซม. น้ำหนักกุ้งอาจคลาดได้ราว 6 ถึง 13%</Tip>
     </>
   )
 }
@@ -161,12 +230,15 @@ export function NetRows({
   onPick,
   onEdit,
   onAdd,
+  adding,
 }: {
   nets: Net[]
   picked?: string | null
   onPick?: (n: Net) => void
   onEdit?: (n: Net) => void
   onAdd: () => void
+  /** The new-size row is the one chosen (the picker, while typing a size). */
+  adding?: boolean
 }) {
   return (
     <div className="snl">
@@ -207,7 +279,7 @@ export function NetRows({
           </button>
         )
       })}
-      <button type="button" className="snr add" onClick={onAdd}>
+      <button type="button" className={`snr add${adding ? ' on' : ''}`} aria-pressed={onEdit ? undefined : Boolean(adding)} onClick={onAdd}>
         <Icon n="plus" />
         ใส่ขนาดใหม่
       </button>

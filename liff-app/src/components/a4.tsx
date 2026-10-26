@@ -276,7 +276,7 @@ export function A4Pond({ s }: { s: PondSheet }) {
       />
       <div className="pp">
         <div className="pc">
-          <Crop photoUrl={s.scan.photoUrl} aspect={aspect} rim={r.rim} shrimp={bandedShrimp(r)} width={300} />
+          <Crop photoUrl={s.scan.photoUrl} aspect={aspect} shape={r.net.shape} rim={r.rim} shrimp={bandedShrimp(r)} width={300} />
           <div className="nt">รูปยอเฉพาะในวงขอบพื้นยอ · จุดคือกุ้งแต่ละตัว</div>
         </div>
         <div className="pn4">
