@@ -71,7 +71,7 @@ export function A4Farm1({ s }: { s: FarmSheet }) {
           <>
             พิมพ์ {fmtTime(s.printedAt)} น. · หน้า 1/2
             <br />
-            ส่งรูปยอวันนี้{' '}
+            สแกนวันนี้{' '}
             <b style={{ display: 'inline', color: '#111', fontSize: 14 }}>
               {s.photosToday.sent}/{s.photosToday.total}
             </b>{' '}
@@ -110,7 +110,7 @@ export function A4Farm1({ s }: { s: FarmSheet }) {
             {s.tiles.urgent.n} <em>บ่อ</em>
           </b>
           <span>
-            โตช้า {s.tiles.urgent.slow} · ไม่ส่งรูป {s.tiles.urgent.missing}
+            โตช้า {s.tiles.urgent.slow} · ไม่ได้สแกน {s.tiles.urgent.missing}
           </span>
         </div>
       </div>
@@ -176,7 +176,7 @@ export function A4Farm1({ s }: { s: FarmSheet }) {
           </tbody>
         </table>
         <div className="nt">
-          วงกลม คือต้องดูด่วน · วงประ คือยังไม่ส่งรูปยอวันนี้ (ตัว/กก. จากครั้งก่อน) · สามเหลี่ยม คือเฝ้าระวัง
+          วงกลม คือต้องดูด่วน · วงประ คือยังไม่สแกนวันนี้ (ตัว/กก. จากครั้งก่อน) · สามเหลี่ยม คือเฝ้าระวัง
           {s.watch.length > watch.length ? ` · และอีก ${s.watch.length - watch.length} บ่อในหน้า 2` : ''}
         </div>
       </div>
@@ -211,7 +211,7 @@ function ZoneTable({ zone, caretaker, ponds, target }: { zone: string; caretaker
             <td className="r b">{p.perKg ?? ''}</td>
             <td className="r">{p.abw !== null ? fmt1(p.abw) : ''}</td>
             <td className="r">{p.gPerDay !== null ? p.gPerDay.toFixed(2) : ''}</td>
-            <td>{p.status === 'missing' ? <b>ไม่ส่งรูป</b> : p.reachOn ? (p.daysToTarget !== null && p.daysToTarget <= 0 ? 'วันนี้' : fmtDay(p.reachOn)) : ''}</td>
+            <td>{p.status === 'missing' ? <b>ยังไม่สแกน</b> : p.reachOn ? (p.daysToTarget !== null && p.daysToTarget <= 0 ? 'วันนี้' : fmtDay(p.reachOn)) : ''}</td>
           </tr>
         ))}
       </tbody>
@@ -239,7 +239,7 @@ export function A4Farm2({ s }: { s: FarmSheet }) {
         ))}
       </div>
       <div className="af">
-        <span>แถบดำ คือพร้อมจับภายใน 5 วัน · สามเหลี่ยม คือเฝ้าระวัง · วงกลม คือต้องดูด่วน · วงประ คือยังไม่ส่งรูป</span>
+        <span>แถบดำ คือพร้อมจับภายใน 5 วัน · สามเหลี่ยม คือเฝ้าระวัง · วงกลม คือต้องดูด่วน · วงประ คือยังไม่สแกน</span>
         <span style={{ whiteSpace: 'nowrap' }}>ลงชื่อ ..........................</span>
       </div>
     </div>

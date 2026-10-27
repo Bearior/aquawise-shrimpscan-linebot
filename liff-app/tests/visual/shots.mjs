@@ -32,21 +32,21 @@ const PAGES = [
   ['o24-stocking', 'owner', '/liff/app/ponds/p-a04/stocking'],
   ['e2-history-f10', 'owner', '/liff/app/ponds/p-f10/history'],
   ['e3-fix', 'owner', '/liff/app/scans/s-f10-1015/fix'],
-  ['o13-inbox', 'owner', '/liff/app/inbox'],
-  ['o14-measure', 'owner', '/liff/app/inbox/measure?ids=s-f09-in,s-f07-in'],
+  ['o39-team', 'owner', '/liff/app/team'],
+  ['o40-member-ponds', 'owner', '/liff/app/people/m-ek/ponds?from=team'],
   ['o19-scan', 'owner', '/liff/app/scan'],
   ['o25-settings', 'owner', '/liff/app/settings'],
   ['o38-nets', 'owner', '/liff/app/nets'],
   ['o7-people', 'owner', '/liff/app/people'],
   ['o8-invite', 'owner', '/liff/app/people/invite'],
   ['o11-permissions', 'owner', '/liff/app/people/m-phon/permissions'],
+  ['o11-permissions-manager', 'owner', '/liff/app/people/m-sak/permissions'],
   ['o32-print', 'owner', '/liff/app/print'],
   ['o33-print-farm', 'owner', '/liff/app/print/farm'],
   ['o34-print-pond', 'owner', '/liff/app/print/pond/p-a04'],
   ['me', 'owner', '/liff/app/me'],
   ['w23-today', 'worker', '/liff/app'],
   ['w17-scan', 'worker', '/liff/app/scan'],
-  ['w11-pick-pond', 'worker', '/liff/app/pick-pond'],
   ['o2-start-candidate', 'new', '/liff/app'],
   ['w2-join', 'new', '/liff/app/join?invite=7K2P9QX'],
   ['o3-start-fresh', 'fresh', '/liff/app'],
@@ -115,6 +115,30 @@ async function main() {
     await settle(page)
     await page.screenshot({ path: path.join(OUT, 'flow-5-result.png'), fullPage: true })
     console.log('shot flow (5)')
+    await page.close()
+  }
+
+  // A worker's scan: F10 from today's list, photo, rim, then send to the owner with no sizes, back to the list.
+  if (!ONLY || ONLY === 'wflow') {
+    const page = await ctx.newPage()
+    watch(page, 'wflow')
+    await page.goto(withPersona('/liff/app', 'worker'))
+    await settle(page)
+    await page.getByRole('button', { name: 'สแกนบ่อ F10' }).click()
+    await page.getByTestId('photo-file').waitFor({ state: 'attached', timeout: 15_000 })
+    await settle(page)
+    await page.screenshot({ path: path.join(OUT, 'wflow-1-photo.png'), fullPage: true })
+    await page.getByTestId('photo-file').setInputFiles(FIXTURE)
+    await page.getByRole('button', { name: 'วัดเลย' }).waitFor({ timeout: 15_000 })
+    await page.getByRole('button', { name: 'วัดเลย' }).click()
+    await page.getByRole('button', { name: /^ส่งให้/ }).waitFor({ timeout: 20_000 })
+    await settle(page)
+    await page.screenshot({ path: path.join(OUT, 'wflow-2-send.png'), fullPage: true })
+    await page.getByRole('button', { name: /^ส่งให้/ }).click()
+    await page.getByText('สแกนครบ 10 บ่อแล้วค่ะ', { exact: false }).waitFor({ timeout: 15_000 })
+    await settle(page)
+    await page.screenshot({ path: path.join(OUT, 'wflow-3-done.png'), fullPage: true })
+    console.log('shot wflow (3)')
     await page.close()
   }
 

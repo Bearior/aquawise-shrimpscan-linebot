@@ -15,6 +15,7 @@ import type {
   InvitePreview,
   MeasureRequest,
   MeasureResponse,
+  MemberPondsResponse,
   MembersResponse,
   Net,
   NetCreate,
@@ -37,6 +38,7 @@ import type {
   SettingsResponse,
   StartRequest,
   Stocking,
+  TeamTodayResponse,
   TodayResponse,
 } from './types'
 
@@ -59,6 +61,7 @@ export const api = {
   setPondNet: (id: string, netId: string) => apiFetch<void>(`${B}/ponds/${enc(id)}/net`, { method: 'PUT', body: { netId } }),
   overview: () => apiFetch<Overview>(`${B}/overview`),
   today: () => apiFetch<TodayResponse>(`${B}/today`),
+  teamToday: () => apiFetch<TeamTodayResponse>(`${B}/team/today`),
 
   /* nets */
   nets: () => apiFetch<NetsResponse>(`${B}/nets`),
@@ -88,6 +91,9 @@ export const api = {
   members: () => apiFetch<MembersResponse>(`${B}/members`),
   setRole: (id: string, role: Exclude<Role, 'owner'>) => apiFetch<void>(`${B}/members/${enc(id)}`, { method: 'PATCH', body: { role } }),
   removeMember: (id: string) => apiFetch<void>(`${B}/members/${enc(id)}`, { method: 'DELETE' }),
+  memberPonds: (id: string) => apiFetch<MemberPondsResponse>(`${B}/members/${enc(id)}/ponds`),
+  setMemberPonds: (id: string, pondIds: string[]) =>
+    apiFetch<MemberPondsResponse>(`${B}/members/${enc(id)}/ponds`, { method: 'PUT', body: { pondIds } }),
   permissions: (id: string) => apiFetch<PermissionsResponse>(`${B}/members/${enc(id)}/permissions`),
   patchPermissions: (id: string, body: PermissionsPatch) =>
     apiFetch<PermissionsResponse>(`${B}/members/${enc(id)}/permissions`, { method: 'PATCH', body }),

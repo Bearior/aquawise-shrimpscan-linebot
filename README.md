@@ -25,9 +25,10 @@ Mock personas: add `?as=owner` (พี่วิชัย, ฟาร์มสา�
 | `/liff/app?as=owner` | ภาพรวมฟาร์ม (O21) |
 | `/liff/app/ponds/p-a04` | หน้าบ่อ A04 (O23) |
 | `/liff/app/scan?pond=p-f10` | สแกน F10 (O19); pick `liff-app/dev-mock/fixtures/yor.jpg` |
-| `/liff/app/inbox` | รูปรอสแกน (O13) |
+| `/liff/app/team` | สแกนวันนี้: ใครสแกนแล้ว (O39) |
+| `/liff/app/people/m-ek/ponds` | บ่อที่ช่างเอกดูแล (O40) |
 | `/liff/app/print` | ใบสรุป A4 (O32 to O34) |
-| `/liff/app?as=worker` | บ่อที่ดูแลวันนี้ (W23) |
+| `/liff/app?as=worker` | บ่อที่ต้องสแกนวันนี้ (W23), no sizes |
 | `/liff/app/join?invite=7K2P9QX&as=new` | คำเชิญ (W2) |
 
 Screenshots of every screen: `pnpm mock` in one terminal, then
@@ -65,9 +66,10 @@ docker build -t shrimpscan-line-bot . && docker run -p 8080:8080 shrimpscan-line
 3. Photo storage and upload limits for `POST /api/liff/scans`.
 4. Print: a server-made PDF, opened with `liff.openWindow({ external: true })`
    (the LIFF prints with `window.print()` today), and "ส่งเป็นรูป" into the chat.
-5. Chat: photos sent in the 1:1 chat land in the owner's inbox; the worker's
-   save line (`สแกน F10 แล้ว`) gets น้ำ's reply; Flex cards; rich menus for
-   owner and worker.
+5. Chat: no photos in the chat any more (workers scan into the pond). Left:
+   a push to the owner when a scan is saved, Flex cards, rich menus for
+   owner and worker (the worker's opens บ่อที่ต้องสแกนวันนี้). Then decide
+   whether the inbox screens (O13 to O18) go.
 6. Reminders and the morning summary (the notify settings on O25).
 7. One word for the worker: the mock says ลูกน้อง, น้องน้ำ's glossary says
    คนงาน, and both apps share one members table. `WORKER` in

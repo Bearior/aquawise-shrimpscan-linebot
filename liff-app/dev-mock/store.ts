@@ -20,6 +20,7 @@ import type {
   InvitePreview,
   MeasureResponse,
   Member,
+  MemberPondsResponse,
   MembersResponse,
   Net,
   NetCreate,
@@ -48,6 +49,8 @@ import type {
   SettingsResponse,
   StartRequest,
   Stocking,
+  TeamPond,
+  TeamTodayResponse,
   TodayResponse,
 } from '../src/api/types'
 import { NET_CM_MAX, NET_CM_MIN } from '../src/api/types'
@@ -212,9 +215,19 @@ interface MFarm {
 }
 
 const DEFAULTS: Record<Role, Permissions> = {
-  owner: { scanSelf: true, editOthers: true, measureInbox: true, farmOverview: true, printSheet: true, remindMissing: true },
-  manager: { scanSelf: true, editOthers: true, measureInbox: true, farmOverview: true, printSheet: true, remindMissing: false },
-  worker: { scanSelf: true, editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, remindMissing: true },
+  owner: { editOthers: true, measureInbox: true, farmOverview: true, printSheet: true, remindMissing: true },
+  manager: { editOthers: true, measureInbox: true, farmOverview: true, printSheet: true, remindMissing: false },
+  worker: { editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, remindMissing: true },
+}
+
+/** The keys that would show a size or a result. A worker never has them, whatever is stored. */
+const SIZE_KEYS: PermissionKey[] = ['editOthers', 'measureInbox', 'farmOverview', 'printSheet']
+
+function effective(m: MMember): Permissions {
+  if (m.role !== 'worker') return m.perms
+  const p = { ...m.perms }
+  for (const k of SIZE_KEYS) p[k] = false
+  return p
 }
 
 /** Photos served at /mock-photos/:id: fixture names, or bytes uploaded in this run. */
@@ -223,7 +236,7 @@ export const photos = new Map<string, { bytes: Buffer; type: string }>()
 /* ---------- seeding ---------- */
 
 function issueOf(p: MPond): string | null {
-  if (p.kind === 'm') return 'ยังไม่ส่งรูปยอ'
+  if (p.kind === 'm') return 'ยังไม่สแกนวันนี้'
   if (p.kind === 'w') return `ไซส์เริ่มไม่เสมอ (CV ${Math.round(p.cv * 100)}%)`
   if (p.kind === 'u') return p.gPerDay <= 0.2 ? `โตช้ามาก วันละ ${p.gPerDay.toFixed(2)} ก.` : 'แตกไซส์ 2 รุ่น และโตช้าลง'
   return null
@@ -299,7 +312,7 @@ function seedFarm(): MFarm {
       role: p.role,
       pondIds: ponds.filter((x) => p.zones.includes(x.zone)).map((x) => x.id),
       joined: p.joined,
-      perms: { ...DEFAULTS[p.role], ...(p.id === 'm-phon' ? { printSheet: true } : {}) },
+      perms: { ...DEFAULTS[p.role] },
     })
   }
   const farm: MFarm = {
@@ -320,20 +333,14 @@ function seedFarm(): MFarm {
     activity: [...ACTIVITY],
   }
 
-  // History: saved scans 15, 10 and 5 days back, and today for ponds whose photo came in and was measured.
-  const inbox: Record<string, { photo: string; hhmm: string; quality: MScan['quality'] }> = {
-    F09: { photo: 'yor', hhmm: '06:12', quality: 'ok' },
-    F07: { photo: 'ok-good', hhmm: '06:15', quality: 'ok' },
-    F08: { photo: 'bad-cut', hhmm: '06:18', quality: 'maybe_cut' },
-  }
+  // History: saved scans 15, 10 and 5 days back, and today for every pond scanned this morning.
   for (const p of ponds) {
     const age = daysBetween(p.stockedOn!, TODAY)
     const by =
       members.find((m) => m.role === 'worker' && m.pondIds.includes(p.id)) ??
       members.find((m) => m.role === 'manager' && m.pondIds.includes(p.id)) ??
       members[0]!
-    const missing = p.kind === 'm' || p.code === 'F10'
-    const doneToday = !missing && !inbox[p.code]
+    const doneToday = p.kind !== 'm' && p.code !== 'F10'
     const days = [-15, -10, -5, ...(doneToday ? [0] : [])]
     for (const back of [-35, -28, -21]) {
       if (age + back >= 7) p.past.push({ date: addDays(TODAY, back), abw: round1(curve(p.trueAbw, p.gPerDay, age, age + back)) })
@@ -345,33 +352,6 @@ function seedFarm(): MFarm {
       const hhmm = back === 0 ? (p.code === 'A04' ? '07:28' : `06:${String(5 + (hash(p.code) % 50)).padStart(2, '0')}`) : '06:30'
       farm.scans.push(savedScan(farm, p, date, hhmm, abw, by))
     })
-    if (inbox[p.code]) {
-      const x = inbox[p.code]!
-      const fixture = x.photo === 'yor'
-      const size = FIXTURE_SIZE[x.photo]!
-      farm.scans.push({
-        id: `s-${p.code.toLowerCase()}-in`,
-        pondId: p.id,
-        photo: x.photo,
-        width: size.width,
-        height: size.height,
-        rimGuess: fixture ? GUESS : centredGuess(),
-        truthRim: fixture ? FIXED : centredGuess(),
-        truthShape: 'round',
-        dots: fixture ? DOTS : null,
-        by: 'ช่างเอก',
-        at: at(TODAY, x.hhmm),
-        status: 'waiting',
-        result: null,
-        measuredBy: null,
-        measuredById: null,
-        remeasures: 0,
-        savedAt: null,
-        fixed: null,
-        quality: x.quality,
-        askedReason: null,
-      })
-    }
   }
   return farm
 }
@@ -495,7 +475,12 @@ export class Store {
   }
 
   private need(me: MMember, key: PermissionKey): void {
-    if (!me.perms[key]) throw new MockError(403, 'not_allowed')
+    if (!effective(me)[key]) throw new MockError(403, 'not_allowed')
+  }
+
+  /** Sizes, growth and pond pages are not a worker's: they scan and send. */
+  private noWorker(me: MMember): void {
+    if (me.role === 'worker') throw new MockError(403, 'not_allowed')
   }
 
   private ownerOnly(me: MMember): void {
@@ -545,7 +530,7 @@ export class Store {
       user: { name: me?.name ?? who.name },
       farm: farm && me ? this.farmRef(farm) : null,
       role: me?.role ?? null,
-      permissions: me?.perms ?? { ...DEFAULTS.worker, scanSelf: false },
+      permissions: me ? effective(me) : { ...DEFAULTS.worker },
       pondIds: me?.pondIds ?? [],
       creditsLeft: farm?.credits ?? 0,
       today: TODAY,
@@ -599,8 +584,13 @@ export class Store {
     return (w ?? m)?.name ?? null
   }
 
+  /** Today's saved scan of a pond, by anyone. */
+  private savedToday(farm: MFarm, pondId: string): MScan | undefined {
+    return this.saved(farm, pondId).find((s) => dayOf(s.savedAt!) === TODAY)
+  }
+
   private photoToday(farm: MFarm, p: MPond): boolean {
-    return farm.scans.some((s) => s.pondId === p.id && s.status !== 'asked_again' && dayOf(s.at) === TODAY)
+    return Boolean(this.savedToday(farm, p.id))
   }
 
   tile(farm: MFarm, p: MPond, me?: MMember): PondTile {
@@ -629,7 +619,7 @@ export class Store {
       status,
       photoToday,
       mine: me ? me.pondIds.includes(p.id) : false,
-      issue: status === 'missing' ? 'ยังไม่ส่งรูปยอ' : status === 'urgent' || status === 'watch' ? issueOf(p) : null,
+      issue: status === 'missing' ? 'ยังไม่สแกนวันนี้' : status === 'urgent' || status === 'watch' ? issueOf(p) : null,
       ageDays: p.stockedOn ? daysBetween(p.stockedOn, TODAY) : null,
       netId: farm.nets.length ? netFor(farm, p).id : null,
     }
@@ -637,6 +627,7 @@ export class Store {
 
   ponds(persona: Persona): PondsResponse {
     const { farm, me } = this.ctx(persona)
+    this.noWorker(me)
     const tiles = farm.ponds.map((p) => this.tile(farm, p, me))
     const zones = [...new Set(farm.ponds.map((p) => p.zone))].map((zone) => {
       const zt = tiles.filter((t) => t.zone === zone)
@@ -664,7 +655,7 @@ export class Store {
   }
 
   private canFix(s: MScan, me: MMember): boolean {
-    return Boolean(s.result) && (s.measuredById === me.id || me.perms.editOthers)
+    return me.role !== 'worker' && Boolean(s.result) && (s.measuredById === me.id || effective(me).editOthers)
   }
 
   private previousOf(farm: MFarm, s: MScan): { abw: number; date: string } | null {
@@ -687,6 +678,7 @@ export class Store {
 
   pondDetail(persona: Persona, id: string): PondDetail {
     const { farm, me } = this.ctx(persona)
+    this.noWorker(me)
     const p = this.pond(farm, id)
     const tile = this.tile(farm, p, me)
     const last = this.saved(farm, p.id)[0]
@@ -713,12 +705,14 @@ export class Store {
 
   pondScans(persona: Persona, id: string): PondScansResponse {
     const { farm, me } = this.ctx(persona)
+    this.noWorker(me)
     const p = this.pond(farm, id)
     return { pond: this.tile(farm, p, me), scans: this.saved(farm, p.id).map((s) => this.summary(farm, s, me)) }
   }
 
   stocking(persona: Persona, id: string): Stocking {
-    const { farm } = this.ctx(persona)
+    const { farm, me } = this.ctx(persona)
+    this.noWorker(me)
     const p = this.pond(farm, id)
     return { stockedOn: p.stockedOn, count: p.count, survival: p.survival }
   }
@@ -805,25 +799,21 @@ export class Store {
 
   today(persona: Persona): TodayResponse {
     const { farm, me } = this.ctx(persona)
-    const rows = me.pondIds.map((id) => {
-      const p = this.pond(farm, id)
-      const s = this.saved(farm, id).find((x) => dayOf(x.at) === TODAY)
-      const waiting = !s && farm.scans.some((x) => x.pondId === id && x.status === 'waiting' && dayOf(x.at) === TODAY)
-      return {
-        pondId: p.id,
-        pondCode: p.code,
-        scanId: s?.id ?? null,
-        perKg: s?.result?.perKg ?? null,
-        abw: s?.result?.abw ?? null,
-        by: s ? (s.measuredBy ?? s.by) : null,
-        at: s?.result?.measuredAt ?? null,
-        lighter: s?.result ? isLighter(s.result.abw, s.result.previous ?? this.previousOf(farm, s)) : false,
-        canFix: s ? this.canFix(s, me) : false,
-        photoUrl: s ? photoUrl(s.photo) : null,
-        waiting,
-      }
-    })
-    return { done: rows.filter((r) => r.scanId || r.waiting).length, total: rows.length, rows }
+    const rows = farm.ponds
+      .filter((p) => me.pondIds.includes(p.id))
+      .map((p) => {
+        const s = this.savedToday(farm, p.id)
+        return {
+          pondId: p.id,
+          pondCode: p.code,
+          netId: farm.nets.length ? netFor(farm, p).id : null,
+          scanId: s?.id ?? null,
+          by: s ? (s.measuredBy ?? s.by) : null,
+          at: s?.savedAt ?? null,
+          photoUrl: s ? photoUrl(s.photo) : null,
+        }
+      })
+    return { done: rows.filter((r) => r.scanId).length, total: rows.length, rows }
   }
 
   /* ----- nets ----- */
@@ -885,7 +875,8 @@ export class Store {
       photoBy: s.by,
       photoAt: s.at,
       status: s.status,
-      result: s.result,
+      result: me.role === 'worker' ? null : s.result,
+      found: s.result ? s.result.shrimp.map((q) => ({ x: q.x, y: q.y })) : null,
       measuredBy: s.measuredBy,
       canFix: this.canFix(s, me),
     }
@@ -893,8 +884,9 @@ export class Store {
 
   upload(persona: Persona, pondId: string, bytes: Buffer, type: string): { scan: Scan } {
     const { farm, me } = this.ctx(persona)
-    this.need(me, 'scanSelf')
     const p = this.pond(farm, pondId)
+    // A worker scans the ponds they look after; the owner moves a pond to them first.
+    if (me.role === 'worker' && !me.pondIds.includes(p.id)) throw new MockError(403, 'not_allowed')
     const size = imageSize(bytes) ?? { width: 1600, height: 1200 }
     // The yor fixture (or a crop of it at its aspect): the guess, the true rim and the dots line up.
     // Into a pond whose ยอ is square, a fixture-sized photo is yor-square.jpg.
@@ -963,8 +955,7 @@ export class Store {
   measure(persona: Persona, id: string, rim: Pt[], netId: string): MeasureResponse {
     const { farm, me } = this.ctx(persona)
     const s = this.scan(farm, id)
-    const own = s.by === me.name
-    this.need(me, own ? 'scanSelf' : 'measureInbox')
+    if (s.by !== me.name) this.need(me, 'measureInbox')
     if (!farm.nets.length) throw new MockError(409, 'no_net')
     const net = farm.nets.find((n) => n.id === netId) ?? netFor(farm, this.pond(farm, s.pondId))
     if (s.result) {
@@ -1009,10 +1000,9 @@ export class Store {
     return {
       pondId: p.id,
       pondCode: p.code,
-      chatText: `สแกน ${p.code} แล้ว`,
       doneToday,
       mineTotal: mine.length,
-      reachOn: tile.reachOn,
+      reachOn: me.role === 'worker' ? null : tile.reachOn,
     }
   }
 
@@ -1118,6 +1108,77 @@ export class Store {
       activity: farm.activity.slice(0, 6),
       uncoveredZones: [...new Set(farm.ponds.map((p) => p.zone))].filter((z) => !covered.has(z)),
     }
+  }
+
+  /** Who scanned today (O39): everyone who looks after ponds, against their ponds. */
+  teamToday(persona: Persona): TeamTodayResponse {
+    const { farm, me } = this.ctx(persona)
+    this.need(me, 'farmOverview')
+    const row = (p: MPond): TeamPond => {
+      const s = this.savedToday(farm, p.id)
+      return { pondId: p.id, pondCode: p.code, at: s?.savedAt ?? null, by: s ? (s.measuredBy ?? s.by) : null }
+    }
+    const people = farm.members
+      .filter((m): m is MMember & { role: 'manager' | 'worker' } => m.role !== 'owner' && m.pondIds.length > 0)
+      .map((m) => {
+        const ponds = farm.ponds.filter((p) => m.pondIds.includes(p.id)).map(row)
+        const times = ponds.map((x) => x.at).filter((x): x is string => x !== null).sort()
+        return {
+          memberId: m.id,
+          name: m.name,
+          role: m.role,
+          pondsLabel: this.pondsLabel(farm, m.pondIds),
+          done: times.length,
+          total: ponds.length,
+          lastAt: times[times.length - 1] ?? null,
+          ponds,
+        }
+      })
+    // People with ponds left first, in the farm's order; the finished after them.
+    people.sort((a, b) => Number(a.done === a.total) - Number(b.done === b.total))
+    const held = new Set(people.flatMap((x) => x.ponds.map((p) => p.pondId)))
+    const all = farm.ponds.map(row)
+    return {
+      today: TODAY,
+      done: all.filter((x) => x.at).length,
+      total: all.length,
+      people,
+      nobody: all.filter((x) => !held.has(x.pondId)),
+      remindAt: farm.notify.remindWorkers ? '10:00' : null,
+    }
+  }
+
+  private pondsView(farm: MFarm, m: MMember, me: MMember): MemberPondsResponse {
+    return {
+      member: this.memberView(farm, m, me),
+      pondIds: farm.ponds.filter((p) => m.pondIds.includes(p.id)).map((p) => p.id),
+      ponds: farm.ponds.map((p) => ({
+        id: p.id,
+        code: p.code,
+        zone: p.zone,
+        heldBy: farm.members.find((x) => x.id !== m.id && x.role !== 'owner' && x.pondIds.includes(p.id))?.name ?? null,
+      })),
+    }
+  }
+
+  memberPonds(persona: Persona, id: string): MemberPondsResponse {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const m = this.member(farm, id)
+    if (m.role === 'owner') throw new MockError(403, 'not_allowed')
+    return this.pondsView(farm, m, me)
+  }
+
+  /** One caretaker a pond: a pond given to this person leaves whoever had it. */
+  setMemberPonds(persona: Persona, id: string, pondIds: string[]): MemberPondsResponse {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const m = this.member(farm, id)
+    if (m.role === 'owner') throw new MockError(403, 'not_allowed')
+    const ids = farm.ponds.filter((p) => pondIds.includes(p.id)).map((p) => p.id)
+    for (const x of farm.members) if (x.id !== m.id && x.role !== 'owner') x.pondIds = x.pondIds.filter((p) => !ids.includes(p))
+    m.pondIds = ids
+    return this.pondsView(farm, m, me)
   }
 
   private member(farm: MFarm, id: string): MMember {

@@ -50,7 +50,7 @@ export function PrintPick() {
           <Sheet onCancel={() => setPondSheet(false)} label="พิมพ์ใบผลสแกนบ่อไหน">
             <Head2 t="พิมพ์ใบผลสแกนบ่อไหนคะ" d="ใช้ผลสแกนล่าสุดของบ่อนั้น" />
             {ponds.data ? (
-              <PondPicker data={ponds.data} worker={false} picked={null} onPick={(p) => navigate(P.printPond(p.id))} doneWord="" notWord="" />
+              <PondPicker data={ponds.data} picked={null} onPick={(p) => navigate(P.printPond(p.id))} doneWord="" notWord="" />
             ) : ponds.error ? (
               <InlineError error={ponds.error} />
             ) : (

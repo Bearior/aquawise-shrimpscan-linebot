@@ -90,7 +90,7 @@ export default function Nets() {
         ) : ponds.data ? (
           <>
             <Head2 t="ตั้งยอบ่อไหนคะ" d="บ่อที่ไม่ได้ตั้ง ใช้ยอของฟาร์ม" />
-            <PondPicker data={ponds.data} worker={false} picked={null} onPick={(p) => setOver({ kind: 'pond', pond: p })} doneWord="" notWord="" />
+            <PondPicker data={ponds.data} picked={null} onPick={(p) => setOver({ kind: 'pond', pond: p })} doneWord="" notWord="" />
           </>
         ) : (
           <Skeleton rows={[48, 200]} />

@@ -21,7 +21,8 @@ import { PrintFarm, PrintPaper, PrintPick, PrintPond } from '@/screens/Print'
 import Start from '@/screens/Start'
 import Join from '@/screens/Join'
 import Today from '@/screens/Today'
-import PickPond from '@/screens/PickPond'
+import TeamToday from '@/screens/TeamToday'
+import MemberPonds from '@/screens/MemberPonds'
 import Me from '@/screens/Me'
 import Closed from '@/screens/Closed'
 
@@ -67,8 +68,8 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Home /> },
           { path: 'scan', element: <ScanFlow /> },
-          { path: 'pick-pond', element: <PickPond /> },
           { path: 'today', element: <Today /> },
+          { path: 'team', element: <TeamToday /> },
           { path: 'inbox', element: <Inbox /> },
           { path: 'inbox/measure', element: <MeasureFlow /> },
           { path: 'overview', element: <Overview /> },
@@ -82,6 +83,7 @@ export const router = createBrowserRouter([
           { path: 'people', element: <People /> },
           { path: 'people/invite', element: <Invite /> },
           { path: 'people/:id/permissions', element: <Permissions /> },
+          { path: 'people/:id/ponds', element: <MemberPonds /> },
           { path: 'print', element: <PrintPick /> },
           { path: 'print/farm', element: <PrintFarm /> },
           { path: 'print/pond/:id', element: <PrintPond /> },

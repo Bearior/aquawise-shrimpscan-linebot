@@ -34,7 +34,7 @@ export default function Inbox() {
 
   if (!r.data) {
     return (
-      <Page title="รูปรอสแกน" nav="inbox">
+      <Page title="รูปรอสแกน" back={P.overview}>
         {r.error ? <ErrorState error={r.error} onRetry={r.reload} /> : <Skeleton rows={[40, 48, 300]} />}
       </Page>
     )
@@ -54,7 +54,7 @@ export default function Inbox() {
   return (
     <Page
       title="รูปรอสแกน"
-      nav="inbox"
+      back={P.overview}
       foot={
         d.photos.length ? (
           <Btn disabled={!ids.length || over} onClick={() => navigate(P.measure(ids))}>

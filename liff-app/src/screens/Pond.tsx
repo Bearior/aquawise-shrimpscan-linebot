@@ -19,8 +19,8 @@ function Banner({ d, target }: { d: PondDetail; target: number }) {
   if (p.status === 'missing') {
     return (
       <div className="xban u">
-        <b>วันนี้ยังไม่มีรูปยอ</b>
-        <span>{p.caretaker ? `ยังไม่ได้รับรูปจาก${p.caretaker}` : 'ยังไม่มีใครส่งรูปบ่อนี้วันนี้'}</span>
+        <b>วันนี้ยังไม่ได้สแกน</b>
+        <span>{p.caretaker ? `${p.caretaker}ยังไม่ได้สแกนบ่อนี้วันนี้` : 'บ่อนี้ยังไม่มีคนดูแล วันนี้ยังไม่มีใครสแกน'}</span>
       </div>
     )
   }

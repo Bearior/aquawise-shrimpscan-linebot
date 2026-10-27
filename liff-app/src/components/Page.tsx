@@ -6,12 +6,12 @@ import { useStepMotion } from '@/lib/motion'
 import { useSession, useToast } from '@/session'
 import { P } from '@/routes'
 
-export type NavKey = 'overview' | 'ponds' | 'inbox' | 'people'
+export type NavKey = 'overview' | 'ponds' | 'team' | 'people'
 
 const NAV: [NavKey, IconName, string, string][] = [
   ['overview', 'grid', 'ภาพรวม', P.overview],
   ['ponds', 'chart', 'รายบ่อ', P.ponds],
-  ['inbox', 'inbox', 'รูปรอสแกน', P.inbox],
+  ['team', 'list', 'สแกนวันนี้', P.team],
   ['people', 'users', 'คนในฟาร์ม', P.people],
 ]
 

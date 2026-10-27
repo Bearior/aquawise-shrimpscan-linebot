@@ -1,18 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '@/api/client'
-import type { Net, Pt, Scan } from '@/api/types'
+import type { Net, PondsResponse, Pt, Scan, TodayResponse } from '@/api/types'
 import { Page, useCloseLiff } from '@/components/Page'
 import { Btn, Chip, ErrorState, Head2, Head3, InlineError, Skeleton, WarnRow } from '@/components/ui'
-import { PondPicker } from '@/components/pond-pick'
+import { PondGrid, PondPicker } from '@/components/pond-pick'
 import { NetStep, netChoiceFrom, netChoiceWants, type NetChoice } from '@/components/nets'
-import { NetChip, ResultBody, bandedShrimp } from '@/components/result'
+import { Crop, NetChip, ResultBody, bandedShrimp } from '@/components/result'
 import { NetChangeSheet } from '@/components/net-change'
 import { RimEditor } from '@/components/rim'
 import { Measuring, PhotoGuide, aspectOf, prepPhoto, usePhotoPicker } from '@/components/scan-steps'
-import { closeLiff, sendChatText } from '@/lib/liff-actions'
 import { useBlink } from '@/lib/motion'
 import { fitRim } from '@/lib/rim'
+import type { Band } from '@/lib/sizes'
 import { fmtWeekday } from '@/lib/format'
 import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
@@ -22,12 +22,46 @@ type Step = 'pond' | 'net' | 'photo' | 'rim' | 'measuring' | 'result'
 
 const NOTE_CHIPS = ['กินดี', 'กินลดลง', 'ตัวนิ่ม', 'ขี้ขาว', 'น้ำเขียวจัด']
 
+/** A pond the scan can go into: from the farm (owner) or from a worker's list for today. */
+interface ScanPond {
+  id: string
+  code: string
+  netId: string | null
+  photoToday: boolean
+  ageDays: number | null
+  caretaker: string | null
+}
+
+interface ScanList {
+  /** The farm's ponds by zone, for the owner's picker; null for a worker. */
+  farm: PondsResponse | null
+  ponds: ScanPond[]
+}
+
+const fromToday = (t: TodayResponse): ScanList => ({
+  farm: null,
+  ponds: t.rows.map((r) => ({ id: r.pondId, code: r.pondCode, netId: r.netId, photoToday: r.scanId !== null, ageDays: null, caretaker: null })),
+})
+
+const fromFarm = (d: PondsResponse): ScanList => ({
+  farm: d,
+  ponds: d.ponds.map((p) => ({ id: p.id, code: p.code, netId: p.netId, photoToday: p.photoToday, ageDays: p.ageDays, caretaker: p.caretaker })),
+})
+
+/** The dots the measuring sweep shows: by size for the owner, one colour for a worker, who gets no sizes. */
+function dotsOf(scan: Scan): { x: number; y: number; band: Band }[] | null {
+  if (scan.result) return bandedShrimp(scan.result)
+  return scan.found ? scan.found.map((q) => ({ x: q.x, y: q.y, band: 'm' as const })) : null
+}
+
 /**
  * สแกนกุ้ง from the menu, in the steps of แบบ 2 (docs/shrimp-scan-rim-redesign,
  * M2): pond, the ยอ, photo, rim, then measuring and the result on the last
  * step. The owner answers the ยอ every time, with this pond's ยอ already
- * chosen (O19 to O19i); a worker has no ยอ step and sees it as a chip on the
- * photo step (W17 to W22).
+ * chosen (O19 to O19i). A worker has no ยอ step (the ยอ is a chip on the
+ * photo step), picks only from their own ponds, and never sees a size: their
+ * last step shows where น้ำ found the shrimp and sends the scan to the owner
+ * (W17 to W22). Nothing goes into the chat.
  */
 export default function ScanFlow() {
   const { session } = useSession()
@@ -38,7 +72,7 @@ export default function ScanFlow() {
   const worker = session.role === 'worker'
   const farm = session.farm!
 
-  const ponds = useApi(() => api.ponds())
+  const list = useApi(() => (worker ? api.today().then(fromToday) : api.ponds().then(fromFarm)))
   const nets = useApi(() => api.nets())
 
   const startPond = params.get('pond')
@@ -95,30 +129,15 @@ export default function ScanFlow() {
 
   const picker = usePhotoPicker((f) => void onFile(f))
 
-  if (!session.permissions.scanSelf) {
-    return (
-      <Page title="สแกนกุ้ง" close>
-        <div className="state">
-          <span className="nn av-nn" aria-hidden="true" />
-          <b>บัญชีนี้ยังสแกนเองไม่ได้ค่ะ</b>
-          <span>ส่งรูปยอให้เจ้าของวัดในแชทได้เลย หรือขอให้เจ้าของเปิดสิทธิ์สแกนเองให้นะคะ</span>
-          <Btn kind="s" onClick={closeOrHome}>
-            กลับไปที่แชท
-          </Btn>
-        </div>
-      </Page>
-    )
-  }
-
-  if (!ponds.data || !nets.data) {
-    const err = ponds.error ?? nets.error
+  if (!list.data || !nets.data) {
+    const err = list.error ?? nets.error
     return (
       <Page title="สแกนกุ้ง" close>
         {err ? (
           <ErrorState
             error={err}
             onRetry={() => {
-              ponds.reload()
+              list.reload()
               nets.reload()
             }}
           />
@@ -129,7 +148,7 @@ export default function ScanFlow() {
     )
   }
 
-  const pond = ponds.data.ponds.find((p) => p.id === pondId) ?? null
+  const pond = list.data.ponds.find((p) => p.id === pondId) ?? null
   const netList = nets.data.nets
   const pondNet: Net | null = netList.find((n) => n.id === pond?.netId) ?? netList.find((n) => n.isFarmDefault) ?? netList[0] ?? null
   const net: Net | null = usedNet ?? scan?.net ?? pondNet
@@ -179,7 +198,7 @@ export default function ScanFlow() {
       // Back on this step, the saved ยอ is the choice: ถัดไป again must not save it twice.
       setChoice(netChoiceFrom(n))
       nets.reload()
-      ponds.reload()
+      list.reload()
       go('photo')
     } catch (e) {
       setError(e)
@@ -196,10 +215,9 @@ export default function ScanFlow() {
       const all = typed.trim() ? [...notes, typed.trim()] : notes
       const r = await api.saveScan(scan.id, worker ? { notes: all } : {})
       if (worker) {
-        // W22: the line goes into the chat as the person; น้ำ answers there.
-        const out = await sendChatText(r.chatText)
-        if (out === 'sent' && closeLiff()) return
-        navigate(P.closed(r.chatText), { replace: true })
+        // W22: the scan is in the pond and the owner sees it there; back to the list for the next pond.
+        toast.show(`ส่งบ่อ ${r.pondCode} ให้${farm.ownerName}แล้วค่ะ`)
+        navigate(P.today, { replace: true })
         return
       }
       toast.show(`บันทึกเข้าบ่อ ${r.pondCode} แล้ว`)
@@ -215,18 +233,15 @@ export default function ScanFlow() {
     setStep(s)
   }
   const backTo = step === 'measuring' ? null : prev(step)
-  const credit = worker ? `วันนี้สแกนได้อีก ${credits} รูป` : `วันนี้วัดได้อีก ${credits} รูป`
+  const credit = `วันนี้วัดได้อีก ${credits} รูป`
   const title = step === 'pond' || !pond ? 'สแกนกุ้ง' : `สแกนกุ้ง บ่อ ${pond.code}`
-  const sub =
-    step === 'pond' || !pond
-      ? worker
-        ? `${session.user.name} · ${fmtWeekday(session.today)}`
+  const sub = worker
+    ? `${session.user.name} · ${fmtWeekday(session.today)}`
+    : step === 'pond' || !pond
+      ? credit
+      : pond.ageDays !== null
+        ? `กุ้งอายุ ${pond.ageDays} วัน · ${credit}`
         : credit
-      : worker
-        ? `${session.user.name} · ${credit}`
-        : pond.ageDays !== null
-          ? `กุ้งอายุ ${pond.ageDays} วัน · ${credit}`
-          : credit
 
   const retake = (
     <Btn kind="l" onClick={() => go('photo')}>
@@ -238,25 +253,26 @@ export default function ScanFlow() {
   let foot
   switch (step) {
     case 'pond': {
-      const mine = ponds.data.ponds.filter((p) => p.mine)
-      const done = mine.filter((p) => p.photoToday).length
+      const all = list.data.ponds
+      const done = all.filter((p) => p.photoToday).length
+      const onPick = (p: { id: string }) => {
+        setPondId(p.id)
+        setChoice(null)
+        setUsedNet(null)
+      }
       body = (
         <>
           {worker ? (
-            <Head2 t="สแกนบ่อไหนคะ" d={`บ่อที่${session.user.name}ดูแล · วันนี้สแกนแล้ว ${done} จาก ${mine.length}`} />
+            <>
+              <Head2 t="สแกนบ่อไหนคะ" d={`บ่อที่${session.user.name}ดูแล · วันนี้สแกนแล้ว ${done} จาก ${all.length}`} />
+              <PondGrid ponds={all} picked={pondId} onPick={onPick} />
+            </>
           ) : (
-            <Head2 t="ถ่ายเข้าบ่อไหนคะ" d="ผลวัดไซส์จะบันทึกเข้าบ่อที่เลือก" />
+            <>
+              <Head2 t="ถ่ายเข้าบ่อไหนคะ" d="ผลวัดไซส์จะบันทึกเข้าบ่อที่เลือก" />
+              {list.data.farm ? <PondPicker data={list.data.farm} picked={pondId} onPick={onPick} /> : null}
+            </>
           )}
-          <PondPicker
-            data={ponds.data}
-            worker={worker}
-            picked={pondId}
-            onPick={(p) => {
-              setPondId(p.id)
-              setChoice(null)
-              setUsedNet(null)
-            }}
-          />
           {pond && !worker && pond.caretaker ? (
             <div className="vc soft l5">
               {pond.code} · {pond.caretaker}ดูแล
@@ -342,7 +358,7 @@ export default function ScanFlow() {
             aspect={photo.aspect}
             shape={shape}
             rim={rim}
-            shrimp={measured && scan.result ? bandedShrimp(scan.result) : null}
+            shrimp={measured ? dotsOf(scan) : null}
             onShown={() => setStep('result')}
           />
         ) : null
@@ -356,20 +372,17 @@ export default function ScanFlow() {
       )
       break
     case 'result': {
-      const r = scan?.result
-      body =
-        r && photo && pond ? (
-          <ResultBody
-            pondCode={pond.code}
-            photoUrl={photo.url}
-            aspect={photo.aspect}
-            r={r}
-            target={farm.targetPerKg}
-            onEditNet={worker ? undefined : () => setSheet(true)}
-            onFixRim={() => go('rim')}
-            note={worker ? undefined : `จุดไม่ตรงขอบ กดย้อนกลับไปแก้ แล้ววัดใหม่ได้อีก ${r.remeasuresLeft} ครั้ง ไม่เสียเครดิต`}
-          >
-            {worker ? (
+      if (worker) {
+        // No sizes for a worker: where the shrimp were found, a note for the owner, and send.
+        const found = scan ? dotsOf(scan) : null
+        body =
+          found && photo && pond ? (
+            <div className="rbody w-fade">
+              <Head2 t={`วัดบ่อ ${pond.code} เสร็จแล้วค่ะ`} d={`กดส่ง ผลจะบันทึกเข้าบ่อ ${pond.code} และถึง${farm.ownerName}ทันที`} />
+              <div style={{ display: 'grid', justifyItems: 'center' }}>
+                <Crop photoUrl={photo.url} aspect={photo.aspect} shape={shape} rim={rim} shrimp={found} width={220} />
+              </div>
+              <span className="l5 mut">จุดสีน้ำเงิน คือกุ้งที่น้ำเจอในยอ ถ้าขอบไม่ตรงพื้นยอ กดแก้ขอบยอได้ค่ะ</span>
               <div className="grp">
                 <Head3 t={`จดเพิ่มให้${farm.ownerName}`} />
                 <span className="l5 mut" style={{ marginTop: -4 }}>
@@ -391,20 +404,38 @@ export default function ScanFlow() {
                   </label>
                 ) : null}
               </div>
-            ) : null}
+              <InlineError error={error} />
+            </div>
+          ) : null
+        foot = (
+          <>
+            <Btn kind="s" disabled={busy} onClick={() => go('rim')}>
+              แก้ขอบยอ
+            </Btn>
+            <Btn icon="send" busy={busy} disabled={busy} onClick={() => void save()}>
+              ส่งให้{farm.ownerName}
+            </Btn>
+          </>
+        )
+        break
+      }
+      const r = scan?.result
+      body =
+        r && photo && pond ? (
+          <ResultBody
+            pondCode={pond.code}
+            photoUrl={photo.url}
+            aspect={photo.aspect}
+            r={r}
+            target={farm.targetPerKg}
+            onEditNet={() => setSheet(true)}
+            onFixRim={() => go('rim')}
+            note={`จุดไม่ตรงขอบ กดย้อนกลับไปแก้ แล้ววัดใหม่ได้อีก ${r.remeasuresLeft} ครั้ง ไม่เสียเครดิต`}
+          >
             <InlineError error={error} />
           </ResultBody>
         ) : null
-      foot = worker ? (
-        <>
-          <Btn kind="s" disabled={busy} onClick={() => go('rim')}>
-            แก้ขอบยอ
-          </Btn>
-          <Btn busy={busy} disabled={busy} onClick={() => void save()}>
-            บันทึกเข้าบ่อ {pond?.code}
-          </Btn>
-        </>
-      ) : (
+      foot = (
         <>
           <Btn kind="s" disabled={busy} onClick={() => go('rim')}>
             ย้อนกลับ

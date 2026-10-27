@@ -2,8 +2,10 @@
 
 The LINE bot and LIFF app for **Shrimp Scan** (สแกนกุ้ง), a LINE Official
 Account separate from น้องน้ำ. Farm owners see sizes, growth and the harvest
-queue; workers scan or send ยอ photos. `AquaWise สแกนกุ้ง` and the slug
-`shrimpscan-line-bot` are working names until the owner picks the product name.
+queue; workers only scan the ponds the owner gave them, every day, and see
+no sizes at all. Nobody sends a photo into the chat. `AquaWise สแกนกุ้ง` and
+the slug `shrimpscan-line-bot` are working names until the owner picks the
+product name.
 
 It is built the way `line-bot/` is built: same branches, same deploy shape,
 same LIFF auth. It is NOT yet a submodule of the umbrella and has no GitHub
@@ -82,9 +84,18 @@ the bypass out of builds.
   photo, rim (4 points on a ยอกลม, 4 corners on a ยอสี่เหลี่ยม), then
   measuring and the result on the same last step. The owner sees the ยอ step
   every time (5 steps, this pond's ยอ already chosen); a worker has no ยอ
-  step (4 steps, the ยอ as a chip on the photo step). The inbox measure flow
-  has ยอ, rim, result per photo. `src/lib/rim.ts` holds the geometry for both
-  shapes (`fitRim`).
+  step (4 steps, the ยอ as a chip on the photo step) and no result: its last
+  step shows where น้ำ found the shrimp, a note, and ส่งให้เจ้าของ.
+  `src/lib/rim.ts` holds the geometry for both shapes (`fitRim`).
+- **A worker sees no number** (Bear, 2026-10-27). Their screens are บ่อที่ต้อง
+  สแกนวันนี้ (W23) and the scan. The contract holds it, not only the
+  screens: `/today` rows carry no sizes, a worker's `Scan.result` is null
+  (they get `found`, the dots without grams), `/ponds`, `/ponds/:id` and the
+  overview refuse a worker, and the four size-showing permissions are held
+  off for a worker whatever is stored. A pond has one caretaker; the owner
+  sets each person's ponds on บ่อที่ดูแล (O40) and watches สแกนวันนี้ (O39).
+  The inbox and its measure flow (O13 to O18) are still in the code but no
+  longer in the nav: they were for photos sent in the chat.
 - **Motion is Day's MO1** (line-bot branch `day-design-guidelines`,
   `docs/design/liff-design-guidelines/`): press 120, select 160, fade 180,
   step 240 (new content slides 24 px in from the side it comes from), bar

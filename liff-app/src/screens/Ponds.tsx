@@ -12,7 +12,7 @@ const KIND: Record<PondStatus, string> = { ready: 'r', good: 'g', watch: 'w', ur
 
 function stateWord(p: PondTile): string {
   if (p.status === 'urgent') return 'ต้องดู'
-  if (p.status === 'missing') return 'ไม่ส่งรูป'
+  if (p.status === 'missing') return 'ยังไม่สแกน'
   if (p.status === 'watch') return 'เฝ้าระวัง'
   if (p.daysToTarget === null) return 'ยังไม่รู้'
   return p.daysToTarget <= 0 ? 'วันนี้' : `อีก ${p.daysToTarget} วัน`

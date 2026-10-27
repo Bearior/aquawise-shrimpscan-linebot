@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { MockError, Store, photos, type Persona } from './store'
+import type { MemberPondsPut } from '../src/api/types'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PERSONAS: Persona[] = ['owner', 'worker', 'new', 'fresh']
@@ -70,6 +71,7 @@ function routes(store: Store): [string, RegExp, Handler][] {
     r('PUT', '/ponds/:id/net', ({ persona, body }, id) => store.setPondNet(persona, id!, b<{ netId: string }>(body).netId)),
     r('GET', '/overview', ({ persona }) => store.overview(persona)),
     r('GET', '/today', ({ persona }) => store.today(persona)),
+    r('GET', '/team/today', ({ persona }) => store.teamToday(persona)),
 
     r('GET', '/nets', ({ persona }) => store.nets(persona)),
     r('POST', '/nets', ({ persona, body }) => store.addNet(persona, b(body))),
@@ -102,6 +104,8 @@ function routes(store: Store): [string, RegExp, Handler][] {
     r('GET', '/members', ({ persona, host }) => store.members(persona, host)),
     r('PATCH', '/members/:id', ({ persona, body }, id) => store.setRole(persona, id!, b<{ role: 'manager' | 'worker' }>(body).role)),
     r('DELETE', '/members/:id', ({ persona }, id) => store.removeMember(persona, id!)),
+    r('GET', '/members/:id/ponds', ({ persona }, id) => store.memberPonds(persona, id!)),
+    r('PUT', '/members/:id/ponds', ({ persona, body }, id) => store.setMemberPonds(persona, id!, b<MemberPondsPut>(body).pondIds ?? [])),
     r('GET', '/members/:id/permissions', ({ persona }, id) => store.permissions(persona, id!)),
     r('PATCH', '/members/:id/permissions', ({ persona, body }, id) => store.patchPermissions(persona, id!, b(body))),
     r('POST', '/invites', ({ persona, body, host }) => store.createInvite(persona, b(body), host)),

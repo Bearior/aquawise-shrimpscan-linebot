@@ -1,18 +1,18 @@
 import { useState } from 'react'
 import type { PondTile, PondsResponse } from '@/api/types'
-import { Chip, Head3 } from './ui'
+import { Chip } from './ui'
 
 /** A grid of pond tiles: done today in green, not yet in amber, said in words too. */
-export function PondGrid({
+export function PondGrid<T extends { id: string; code: string; photoToday: boolean }>({
   ponds,
   picked,
   onPick,
   doneWord = 'สแกนแล้ว',
   notWord = 'ยังไม่สแกน',
 }: {
-  ponds: PondTile[]
+  ponds: T[]
   picked: string | null
-  onPick: (p: PondTile) => void
+  onPick: (p: T) => void
   doneWord?: string
   notWord?: string
 }) {
@@ -36,51 +36,25 @@ export function PondGrid({
 }
 
 /**
- * Choose a pond. A worker sees their own ponds first and other zones on
- * request; an owner picks a zone, then a pond (60 ponds do not fit one list).
+ * Choose a pond of the farm: a zone, then a pond (60 ponds do not fit one
+ * list). A worker never gets this: they pick from their own ponds only.
  */
 export function PondPicker({
   data,
-  worker,
   picked,
   onPick,
   doneWord,
   notWord,
 }: {
   data: PondsResponse
-  worker: boolean
   picked: string | null
   onPick: (p: PondTile) => void
   doneWord?: string
   notWord?: string
 }) {
   const pickedZone = data.ponds.find((p) => p.id === picked)?.zone ?? null
-  const mine = data.ponds.filter((p) => p.mine)
-  const firstZone = worker ? null : (pickedZone ?? data.zones[0]?.zone ?? null)
-  const [zone, setZone] = useState<string | null>(worker && pickedZone && !mine.some((p) => p.id === picked) ? pickedZone : firstZone)
+  const [zone, setZone] = useState<string | null>(pickedZone ?? data.zones[0]?.zone ?? null)
   const inZone = data.ponds.filter((p) => p.zone === zone)
-
-  if (worker) {
-    const otherZones = data.zones.filter((z) => !mine.some((p) => p.zone === z.zone))
-    return (
-      <>
-        {mine.length ? <PondGrid ponds={mine} picked={picked} onPick={onPick} doneWord={doneWord} notWord={notWord} /> : null}
-        {otherZones.length ? (
-          <div className="grp">
-            <Head3 t="บ่ออื่นในฟาร์ม" />
-            <div className="chips">
-              {otherZones.map((z) => (
-                <Chip key={z.zone} on={zone === z.zone} onClick={() => setZone(zone === z.zone ? null : z.zone)}>
-                  โซน {z.zone}
-                </Chip>
-              ))}
-            </div>
-            {zone ? <PondGrid ponds={inZone} picked={picked} onPick={onPick} doneWord={doneWord} notWord={notWord} /> : null}
-          </div>
-        ) : null}
-      </>
-    )
-  }
 
   return (
     <>

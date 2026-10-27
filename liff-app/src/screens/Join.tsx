@@ -76,7 +76,10 @@ function Form({ inv, code }: { inv: InvitePreview; code: string }) {
         </div>
       </div>
       <div className="vc soft l5">
-        {ROLE_LABEL[inv.role]}สแกนกุ้งและส่งรูปยอของบ่อที่ดูแล และเห็นขนาดกุ้งของบ่อนั้น · น้ำจะเห็นชื่อและรูปโปรไฟล์ LINE ของพี่
+        {inv.role === 'worker'
+          ? `${ROLE_LABEL.worker}สแกนกุ้งบ่อที่ดูแลทุกวัน ผลสแกนถึง${inv.ownerName}ทันที`
+          : `${ROLE_LABEL[inv.role]}สแกนกุ้ง และเห็นไซส์กับภาพรวมทั้งฟาร์ม`}{' '}
+        · น้ำจะเห็นชื่อและรูปโปรไฟล์ LINE ของพี่
       </div>
       <div className="grp">
         <Head3 t="ชื่อที่ใช้ในฟาร์ม" />

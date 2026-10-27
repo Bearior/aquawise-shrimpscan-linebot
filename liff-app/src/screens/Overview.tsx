@@ -4,7 +4,7 @@ import { api } from '@/api/client'
 import type { Overview as OverviewData, QueueRow } from '@/api/types'
 import { Page } from '@/components/Page'
 import { Icon } from '@/components/Icon'
-import { Chip, ErrorState, InlineError, Skeleton } from '@/components/ui'
+import { Chip, ErrorState, InlineError, MBtn, Skeleton } from '@/components/ui'
 import { QueueChart } from '@/components/charts'
 import { fmt1, fmtQueueDay, fmtTonnes, fmtWeekday } from '@/lib/format'
 import { useApi } from '@/lib/use-api'
@@ -131,12 +131,12 @@ export default function Overview() {
         )}
         {tile('g', 'โตดี', d.tiles.good.n, 'ไซส์เสมอ', 'good')}
         {tile('w', 'เฝ้าระวัง', d.tiles.watch.n, 'ไซส์เริ่มไม่เสมอ', 'watch')}
-        {tile('u', 'ต้องดู', d.tiles.urgent.n, `โตช้า ${d.tiles.urgent.slow} · ไม่ส่งรูป ${d.tiles.urgent.missing}`, 'urgent')}
+        {tile('u', 'ต้องดู', d.tiles.urgent.n, `โตช้า ${d.tiles.urgent.slow} · ไม่ได้สแกน ${d.tiles.urgent.missing}`, 'urgent')}
       </div>
 
       <div className="vc xprog">
         <div className="pl">
-          <span>ส่งรูปยอวันนี้</span>
+          <span>สแกนวันนี้</span>
           <b>
             {d.photosToday.sent}/{d.photosToday.total}
           </b>
@@ -147,9 +147,12 @@ export default function Overview() {
         {d.photosToday.missing.length ? (
           <span className="miss">
             <Icon n="warn" />
-            ยังไม่ส่ง {d.photosToday.missing.join(' ')}
+            ยังไม่สแกน {d.photosToday.missing.join(' ')}
           </span>
         ) : null}
+        <MBtn icon="users" onClick={() => navigate(P.team)}>
+          ดูว่าใครสแกนแล้ว
+        </MBtn>
       </div>
 
       <div className="vc">

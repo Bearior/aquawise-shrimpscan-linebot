@@ -4,14 +4,18 @@ import { api } from '@/api/client'
 import type { PermissionKey, PermissionsPatch, PermissionsResponse } from '@/api/types'
 import { Page } from '@/components/Page'
 import { Icon } from '@/components/Icon'
-import { ErrorState, InlineError, Skeleton, Toggle } from '@/components/ui'
+import { ErrorState, InlineError, MBtn, Skeleton, Toggle } from '@/components/ui'
 import { PeopleHead } from '@/components/people'
 import { ROLE_LABEL } from '@/copy/th'
 import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
 
-/** The five things a person can be allowed to do; the reminder is a notification, not an ability. */
-const ABILITIES: PermissionKey[] = ['scanSelf', 'editOthers', 'measureInbox', 'farmOverview', 'printSheet']
+/**
+ * The things a person can be allowed to do beyond scanning their ponds; the
+ * reminder is a notification, not an ability. All four show sizes or results,
+ * so none is open to a worker: a worker only scans.
+ */
+const ABILITIES: PermissionKey[] = ['editOthers', 'measureInbox', 'farmOverview', 'printSheet']
 
 function Row({ t, s, right, muted, custom }: { t: string; s?: string; right: ReactNode; muted?: boolean; custom?: boolean }) {
   return (
@@ -79,6 +83,7 @@ export default function Permissions() {
   const can = ABILITIES.filter((k) => d.perms[k]).length
   const customN = (Object.keys(d.perms) as PermissionKey[]).filter(custom).length
   const editable = m.role !== 'owner'
+  const worker = m.role === 'worker'
 
   return (
     <Page top={head(m.name)}>
@@ -88,6 +93,11 @@ export default function Permissions() {
           <span className="l5 mut">
             {m.joined} · ดูแล {d.pondsLabel}
           </span>
+          {editable ? (
+            <MBtn icon="list" onClick={() => navigate(P.memberPonds(m.id))}>
+              เปลี่ยนบ่อที่ดูแล
+            </MBtn>
+          ) : null}
         </div>
         {editable ? (
           <div style={{ display: 'grid', gap: 8 }}>
@@ -104,9 +114,7 @@ export default function Permissions() {
         ) : null}
         <div className="psum">
           <div>
-            <b>
-              ทำได้ {can} จาก {ABILITIES.length} อย่าง
-            </b>
+            <b>{worker ? 'สแกนอย่างเดียว' : `ทำได้ ${can} จาก ${ABILITIES.length} อย่าง`}</b>
             <span>{customN ? `ปรับเอง ${customN} อย่าง` : 'ตามค่าเริ่มต้นของบทบาท'}</span>
           </div>
           {customN ? (
@@ -118,20 +126,27 @@ export default function Permissions() {
       </div>
       <InlineError error={error} />
       <Group t="งานประจำวัน" s="ทุกคนในฟาร์มทำได้เสมอ">
-        <Row t="ส่งรูปยอของบ่อที่ดูแล" s="ส่งในแชทให้เจ้าของวัด" right={<Icon n="check" />} />
-        <Row t="ดูบ่อที่ดูแล" s="ไซส์ล่าสุด และบ่อที่ยังไม่ส่งรูป" right={<Icon n="check" />} />
+        <Row t="สแกนกุ้งบ่อที่ดูแลทุกวัน" s="ตีขอบยอ กดวัด บันทึกเข้าบ่อ ผลถึงเจ้าของทันที" right={<Icon n="check" />} />
+        <Row t="ดูว่าวันนี้ต้องสแกนบ่อไหน" s="บ่อที่ดูแล และบ่อที่ยังไม่สแกน" right={<Icon n="check" />} />
       </Group>
-      <Group t="สแกนกุ้ง" s="ใช้เครดิตของฟาร์ม">
-        <Row t="สแกนเองได้" s="ตีขอบยอ กดวัด บันทึกเข้าบ่อ" right={sw('scanSelf', 'สแกนเองได้')} custom={custom('scanSelf')} />
-        <Row t="แก้ขอบยอผลของคนอื่น" s="ผลที่ตัวเองสแกน แก้ได้เสมอ" right={sw('editOthers', 'แก้ขอบยอผลของคนอื่น')} custom={custom('editOthers')} />
-        <Row t="วัดรูปที่คนอื่นส่ง" s="รูปในกล่องรูปรอสแกน" right={sw('measureInbox', 'วัดรูปที่คนอื่นส่ง')} custom={custom('measureInbox')} />
-      </Group>
-      <Group t="ดูข้อมูล">
-        <Row t="ดูภาพรวมทั้งฟาร์ม" s="ทุกบ่อ และคิวจับ" right={sw('farmOverview', 'ดูภาพรวมทั้งฟาร์ม')} custom={custom('farmOverview')} />
-        <Row t="พิมพ์ใบผลสแกน" s="เฉพาะบ่อที่ดูแล" right={sw('printSheet', 'พิมพ์ใบผลสแกน')} custom={custom('printSheet')} />
-      </Group>
+      {worker ? (
+        <Group t="ไซส์และผลสแกน" s={`${ROLE_LABEL.worker}ไม่เห็น`}>
+          <Row t="ดูไซส์ ผลสแกน และภาพรวมฟาร์ม" s="ถ้าอยากให้เห็น เปลี่ยนบทบาทเป็นผู้จัดการ" right={<Icon n="lock" />} muted />
+        </Group>
+      ) : (
+        <>
+          <Group t="ผลสแกน" s="ใช้เครดิตของฟาร์ม">
+            <Row t="แก้ขอบยอผลของคนอื่น" s="ผลที่ตัวเองสแกน แก้ได้เสมอ" right={sw('editOthers', 'แก้ขอบยอผลของคนอื่น')} custom={custom('editOthers')} />
+            <Row t="วัดรูปที่คนอื่นส่ง" s="รูปในกล่องรูปรอสแกน" right={sw('measureInbox', 'วัดรูปที่คนอื่นส่ง')} custom={custom('measureInbox')} />
+          </Group>
+          <Group t="ดูข้อมูล">
+            <Row t="ดูภาพรวมทั้งฟาร์ม" s="ทุกบ่อ คิวจับ และใครสแกนแล้ว" right={sw('farmOverview', 'ดูภาพรวมทั้งฟาร์ม')} custom={custom('farmOverview')} />
+            <Row t="พิมพ์ใบผลสแกน" s="เฉพาะบ่อที่ดูแล" right={sw('printSheet', 'พิมพ์ใบผลสแกน')} custom={custom('printSheet')} />
+          </Group>
+        </>
+      )}
       <Group t="แจ้งเตือน">
-        <Row t="เตือนเมื่อยังไม่ส่งรูป" s="ทุกวัน 10:00 เฉพาะบ่อที่ขาด" right={sw('remindMissing', 'เตือนเมื่อยังไม่ส่งรูป')} custom={custom('remindMissing')} />
+        <Row t="เตือนเมื่อยังไม่สแกน" s="ทุกวัน 10:00 เฉพาะบ่อที่ขาด" right={sw('remindMissing', 'เตือนเมื่อยังไม่สแกน')} custom={custom('remindMissing')} />
       </Group>
       <Group t="เฉพาะเจ้าของ" s="เปิดให้คนอื่นไม่ได้">
         <Row t="เติมเครดิตสแกน" right={<Icon n="lock" />} muted />

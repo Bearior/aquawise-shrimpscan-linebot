@@ -11,7 +11,7 @@ export const APP_NAME = 'AquaWise สแกนกุ้ง'
 export const TH = {
   appName: APP_NAME,
   /** follow event. A buttons template body: 160 characters at most. */
-  greeting: 'สวัสดีค่ะ น้ำช่วยวัดกุ้งจากรูปยอให้ค่ะ\nลูกน้องส่งรูปยอในแชทนี้ พี่กดวัดเอง แล้วดูว่ากุ้งโตทันไซส์ จับได้วันไหน',
+  greeting: 'สวัสดีค่ะ น้ำช่วยวัดกุ้งจากรูปยอให้ค่ะ\nลูกน้องสแกนบ่อที่ดูแลทุกวัน พี่เห็นว่าใครสแกนแล้ว กุ้งโตทันไซส์ไหม จับได้วันไหน',
   greetingButton: 'เริ่มใช้',
   /** any text message, until the chat features are built. */
   placeholder: 'ตอนนี้น้ำยังตอบข้อความในแชทไม่ได้ค่ะ กดปุ่มด้านล่างเพื่อเปิดหน้าสแกนกุ้งนะคะ',

@@ -26,10 +26,14 @@ export interface Pt {
 
 /* ---------- session ---------- */
 
+/**
+ * What a person may do beyond the daily job. Everyone in a farm scans the
+ * ponds they look after, into the pond, every day; that is not a switch.
+ * A worker never sees sizes or results, so the server holds the four
+ * number-showing keys off for a worker whatever is stored.
+ */
 export interface Permissions {
-  /** สแกนเองได้: rim, measure, save into the pond. */
-  scanSelf: boolean
-  /** แก้ขอบยอผลของคนอื่น. Your own scans are always editable. */
+  /** แก้ขอบยอผลของคนอื่น. Your own scans are always editable (not a worker's: they see no result). */
   editOthers: boolean
   /** วัดรูปที่คนอื่นส่ง (the inbox). */
   measureInbox: boolean
@@ -37,7 +41,7 @@ export interface Permissions {
   farmOverview: boolean
   /** พิมพ์ใบผลสแกน. */
   printSheet: boolean
-  /** เตือนเมื่อยังไม่ส่งรูป. */
+  /** เตือนเมื่อยังไม่สแกน. */
   remindMissing: boolean
 }
 export type PermissionKey = keyof Permissions
@@ -100,7 +104,7 @@ export interface PondTile {
   reachOn: string | null
   daysToTarget: number | null
   status: PondStatus
-  /** A photo was sent or scanned today. */
+  /** Scanned into the pond today. */
   photoToday: boolean
   /** The caller looks after this pond. */
   mine: boolean
@@ -230,7 +234,10 @@ export interface Scan {
   photoBy: string
   photoAt: string
   status: 'waiting' | 'measured' | 'saved' | 'asked_again'
+  /** The measured sizes. Always null for a worker: they get `found` instead. */
   result: ScanResult | null
+  /** Once measured, where น้ำ found each shrimp, with no size: all a worker gets back. */
+  found: Pt[] | null
   /** Who measured and who may fix it. */
   measuredBy: string | null
   canFix: boolean
@@ -258,11 +265,10 @@ export interface SaveRequest {
 export interface SaveResponse {
   pondId: string
   pondCode: string
-  /** Text the LIFF sends into the chat as the person (W22), then closes. */
-  chatText: string
+  /** The person's ponds scanned today, this one included, and how many they look after. */
   doneToday: number
   mineTotal: number
-  /** When the pond now reaches the farm's target size, if known. */
+  /** When the pond now reaches the farm's target size, if known. Null for a worker. */
   reachOn: string | null
 }
 
@@ -303,26 +309,62 @@ export interface PondScansResponse {
 
 /* ---------- worker: today (W23) ---------- */
 
+/**
+ * One pond on a worker's list for today. No sizes on purpose: a worker
+ * scans and sends; only the owner's side sees what the scan said.
+ */
 export interface TodayRow {
   pondId: string
   pondCode: string
+  /** The ยอ this pond is measured against, for the chip on the photo step. */
+  netId: string | null
+  /** Today's saved scan of this pond, by anyone; null until then. */
   scanId: string | null
-  perKg: number | null
-  abw: number | null
   by: string | null
   at: string | null
-  lighter: boolean
-  canFix: boolean
   photoUrl: string | null
-  /** No result yet, but a photo went to the owner today and waits to be measured. */
-  waiting: boolean
 }
 
 export interface TodayResponse {
-  /** Ponds scanned or sent today. */
+  /** Ponds scanned today. */
   done: number
   total: number
   rows: TodayRow[]
+}
+
+/* ---------- owner: who scanned today (O39) ---------- */
+
+export interface TeamPond {
+  pondId: string
+  pondCode: string
+  /** When today's scan was saved, and by whom (the owner may scan for someone). */
+  at: string | null
+  by: string | null
+}
+
+export interface TeamPerson {
+  memberId: string
+  name: string
+  role: Exclude<Role, 'owner'>
+  /** 'F01 ถึง F10'. */
+  pondsLabel: string
+  done: number
+  total: number
+  /** The latest scan today: the time a finished person finished. */
+  lastAt: string | null
+  ponds: TeamPond[]
+}
+
+export interface TeamTodayResponse {
+  today: string
+  done: number
+  total: number
+  /** Everyone who looks after ponds, the ones with ponds left first. */
+  people: TeamPerson[]
+  /** Ponds no one looks after: nobody is asked to scan them. */
+  nobody: TeamPond[]
+  /** When น้ำ reminds the people with ponds left ('10:00'); null when the reminder is off. */
+  remindAt: string | null
 }
 
 /* ---------- owner: inbox (O13 to O18) ---------- */
@@ -370,6 +412,7 @@ export interface Overview {
     watch: { n: number }
     urgent: { n: number; slow: number; missing: number }
   }
+  /** Ponds scanned today (the field name is from when photos were sent in the chat). */
   photosToday: { sent: number; total: number; missing: string[] }
   /** 14 days from today: how many ponds reach the target each day. */
   queueDays: { date: string; n: number }[]
@@ -431,6 +474,19 @@ export interface InviteAccept {
   displayName: string
   lang: 'th' | 'my'
   addFriend: boolean
+}
+
+/** Which ponds one person looks after (O40). A pond has one caretaker. */
+export interface MemberPondsResponse {
+  member: Member
+  pondIds: string[]
+  /** Every pond of the farm; `heldBy` names another person who looks after it now. */
+  ponds: { id: string; code: string; zone: string; heldBy: string | null }[]
+}
+
+export interface MemberPondsPut {
+  /** Ponds held by someone else move to this person. */
+  pondIds: string[]
 }
 
 export interface PermissionsResponse {

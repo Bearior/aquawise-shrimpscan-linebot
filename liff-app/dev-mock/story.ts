@@ -142,7 +142,7 @@ export const F10_HISTORY: [string, number][] = [
 
 export const ACTIVITY: { who: string; what: string; when: string }[] = [
   { who: 'ลุงพล', what: 'สแกนกุ้ง · A04', when: 'วันนี้ 07:28' },
-  { who: 'บังดล', what: 'ส่งรูปยอ · E05', when: 'วันนี้ 06:50' },
+  { who: 'บังดล', what: 'สแกนกุ้ง · E05', when: 'วันนี้ 06:50' },
   { who: 'พี่วิชัย', what: 'วัดรูป · F09', when: 'วันนี้ 07:02' },
   { who: 'น้าศักดิ์', what: 'แก้ขอบยอ · C03', when: 'เมื่อวาน 17:12' },
 ]

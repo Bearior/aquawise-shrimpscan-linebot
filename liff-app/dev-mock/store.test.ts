@@ -23,6 +23,7 @@ describe('the mock farm', () => {
     expect(s.session('worker').pondIds).toHaveLength(10)
     expect(() => s.overview('worker')).toThrow(MockError)
     expect(() => s.inbox('worker')).toThrow(/not_allowed/)
+    expect(s.session('worker').permissions).toMatchObject({ farmOverview: false, printSheet: false })
     expect(s.session('new').candidate?.name).toBe('ฟาร์มบ้านแพ้ว')
     expect(s.session('fresh').farm).toBeNull()
   })
@@ -66,19 +67,66 @@ describe('the mock farm', () => {
     const { scan } = s.upload('worker', 'p-f10', yor, 'image/jpeg')
     s.measure('worker', scan.id, FIXED, 'net-82')
     const saved = s.save('worker', scan.id, ['กินดี'])
-    expect(saved.chatText).toBe('สแกน F10 แล้ว')
-    expect(saved.doneToday).toBe(10) // F01 to F06 scanned, F07 to F09 sent to the owner, F10 now
+    expect(saved.doneToday).toBe(10) // F01 to F09 scanned this morning, F10 now
+    expect(saved.reachOn).toBeNull() // a worker gets no growth back
     const tile = s.ponds('owner').ponds.find((p) => p.code === 'F10')!
     expect(tile.photoToday).toBe(true)
     expect(tile.abw).toBe(17.2)
     expect(s.pondDetail('owner', 'p-f10').note?.text).toBe('กินดี')
+    expect(s.teamToday('owner').people.find((x) => x.name === 'ช่างเอก')).toMatchObject({ done: 10, total: 10 })
   })
 
-  it('counts a photo sent to the owner as done for the worker', () => {
-    const t = new Store().today('worker')
-    expect(t.done).toBe(9)
-    expect(t.rows.filter((r) => r.waiting).map((r) => r.pondCode)).toEqual(['F07', 'F08', 'F09'])
-    expect(t.rows.filter((r) => !r.scanId && !r.waiting).map((r) => r.pondCode)).toEqual(['F10'])
+  it('gives a worker their ponds for today and no sizes', () => {
+    const s = new Store()
+    const t = s.today('worker')
+    expect(t).toMatchObject({ done: 9, total: 10 })
+    expect(t.rows.filter((r) => !r.scanId).map((r) => r.pondCode)).toEqual(['F10'])
+    expect(Object.keys(t.rows[0]!)).not.toContain('perKg')
+
+    const { scan } = s.upload('worker', 'p-f10', yor, 'image/jpeg')
+    const m = s.measure('worker', scan.id, FIXED, 'net-82')
+    expect(m.scan.result).toBeNull()
+    expect(m.scan.found).toHaveLength(64)
+    expect(m.scan.canFix).toBe(false)
+    expect(s.measure('owner', scan.id, FIXED, 'net-82').scan.result?.abw).toBe(17.2)
+
+    for (const call of [() => s.ponds('worker'), () => s.pondDetail('worker', 'p-f10'), () => s.pondScans('worker', 'p-f10'), () => s.teamToday('worker')]) {
+      expect(call).toThrow(/not_allowed/)
+    }
+    // Not their pond: a worker scans only what the owner gave them.
+    expect(() => s.upload('worker', 'p-a01', yor, 'image/jpeg')).toThrow(/not_allowed/)
+  })
+
+  it('holds the size-showing switches off for a worker, whatever is stored', () => {
+    const s = new Store()
+    s.patchPermissions('owner', 'm-ek', { key: 'farmOverview', value: true })
+    expect(s.session('worker').permissions.farmOverview).toBe(false)
+    expect(() => s.overview('worker')).toThrow(/not_allowed/)
+  })
+
+  it('shows the owner who scanned today, the ones with ponds left first', () => {
+    const t = new Store().teamToday('owner')
+    expect(t).toMatchObject({ done: 57, total: 60, remindAt: '10:00', nobody: [] })
+    expect(t.people.map((x) => [x.name, x.done, x.total])).toEqual([
+      ['บังดล', 8, 10],
+      ['ช่างเอก', 9, 10],
+      ['น้าศักดิ์', 20, 20],
+      ['ลุงพล', 10, 10],
+      ['พี่ชาติ', 10, 10],
+    ])
+    expect(t.people[0]!.ponds.filter((p) => !p.at).map((p) => p.pondCode)).toEqual(['E03', 'E07'])
+  })
+
+  it('gives a pond one caretaker: moving it leaves the old one', () => {
+    const s = new Store()
+    const all = s.memberPonds('owner', 'm-ek')
+    const a01 = all.ponds.find((p) => p.code === 'A01')!
+    expect(a01.heldBy).toBe('ลุงพล')
+    const after = s.setMemberPonds('owner', 'm-ek', [...all.pondIds, a01.id])
+    expect(after.pondIds).toHaveLength(11)
+    expect(s.memberPonds('owner', 'm-phon').pondIds).toHaveLength(9)
+    expect(s.today('worker').total).toBe(11)
+    expect(() => s.setMemberPonds('worker', 'm-ek', [])).toThrow(/not_allowed/)
   })
 
   it('checks the ยอ size and makes the first ยอ the farm’s', () => {

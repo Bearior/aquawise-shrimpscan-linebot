@@ -86,6 +86,9 @@ export default function People() {
               <PersonRow m={m} onGear={canGear ? () => setGear(gear === m.id ? null : m.id) : undefined} />
               {gear === m.id ? (
                 <div className="gp">
+                  <button type="button" onClick={() => navigate(P.memberPonds(m.id))}>
+                    บ่อที่ดูแล
+                  </button>
                   <button type="button" onClick={() => navigate(P.permissions(m.id))}>
                     สิทธิ์
                   </button>

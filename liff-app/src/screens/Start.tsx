@@ -195,7 +195,7 @@ export default function Start() {
         {farm?.name ?? 'ฟาร์ม'}พร้อมแล้วค่ะ
       </b>
       <span className="l5 mut" style={{ textAlign: 'center' }}>
-        ต่อไปชวน{WORKER}ให้ส่งรูปยอเข้ามา พี่จะได้แจ้งเตือนเมื่อรูปเข้า
+        ต่อไปชวน{WORKER}เข้าฟาร์ม แล้วเลือกบ่อที่แต่ละคนสแกนทุกวัน พี่จะเห็นว่าใครสแกนแล้ว
       </span>
       <div className="vc">
         <Head3 t="ขั้นต่อไป" />

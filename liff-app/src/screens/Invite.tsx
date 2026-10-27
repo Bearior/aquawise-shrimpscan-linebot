@@ -16,8 +16,8 @@ import { useSession, useToast } from '@/session'
 type InviteRole = Exclude<Role, 'owner'>
 
 const ROLE_CARDS: [InviteRole, string][] = [
-  ['worker', 'สแกนกุ้งและส่งรูปยอของบ่อที่ดูแล · เห็นขนาดกุ้งของบ่อนั้น'],
-  ['manager', `ทุกอย่างของ${WORKER} · ดูภาพรวมทั้งฟาร์ม · แก้ผลสแกนของทุกคน`],
+  ['worker', 'สแกนกุ้งบ่อที่ดูแลทุกวัน · ไม่เห็นไซส์ ผลสแกนถึงเจ้าของ'],
+  ['manager', `สแกนได้เหมือน${WORKER} · เห็นไซส์และภาพรวมทั้งฟาร์ม · แก้ผลสแกนของทุกคน`],
 ]
 
 /** The QR as a picture: no innerHTML, and the code stays readable under it. */
