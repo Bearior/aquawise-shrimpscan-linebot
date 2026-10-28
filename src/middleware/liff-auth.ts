@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express'
 import crypto from 'node:crypto'
+import { deployedAs } from '../lib/deployed.js'
 import { logger } from '../lib/logger.js'
 
 /**
@@ -138,17 +139,17 @@ export async function verifyLiffToken(token: string): Promise<string> {
  * Dev-only auth bypass for the local LIFF harness. Kept exactly as line-bot
  * has it.
  *
- * Unreachable unless ALL of these hold: `K_SERVICE` is absent (not on Cloud
- * Run), `NODE_ENV !== 'production'`, `ALLOW_DEV_LIFF_AUTH === 'true'` and
- * `LIFF_DEV_USER_ID` is set. `K_SERVICE` is the load-bearing term:
- * `NODE_ENV !== 'production'` is TRUE on staging, which is public, so
+ * Unreachable unless ALL of these hold: `deployedAs()` is null (not on Cloud
+ * Run, not on Railway), `NODE_ENV !== 'production'`, `ALLOW_DEV_LIFF_AUTH ===
+ * 'true'` and `LIFF_DEV_USER_ID` is set. `deployedAs()` is the load-bearing
+ * term: `NODE_ENV !== 'production'` is TRUE on staging, which is public, so
  * NODE_ENV alone is not an "am I deployed" test.
  *
  * When active, `Authorization: Bearer dev-liff` (the sentinel the local LIFF
  * build sends from `VITE_DEV_LIFF_TOKEN`) is attributed to `LIFF_DEV_USER_ID`.
  */
 function devAuthBypass(req: Request): string | null {
-  if (process.env['K_SERVICE']) return null
+  if (deployedAs()) return null
   if (process.env['NODE_ENV'] === 'production') return null
   // Opt-in by its own name, so no other variable can turn auth off by accident.
   if (process.env['ALLOW_DEV_LIFF_AUTH'] !== 'true') return null
@@ -164,12 +165,13 @@ function devAuthBypass(req: Request): string | null {
  * deploy time instead of sitting in the environment unexplained.
  */
 export function assertNoDevAuthInDeployedEnv(): void {
-  if (!process.env['K_SERVICE']) return
+  const service = deployedAs()
+  if (!service) return
   if (!process.env['LIFF_DEV_USER_ID'] && process.env['ALLOW_DEV_LIFF_AUTH'] !== 'true') return
   throw new Error(
     '[liff-auth] REFUSING TO START: LIFF_DEV_USER_ID / ALLOW_DEV_LIFF_AUTH are set on a ' +
-      `deployed Cloud Run revision (K_SERVICE=${process.env['K_SERVICE']}). The dev auth ` +
-      'bypass is unreachable there by design; remove the variables with --remove-env-vars.',
+      `deployed service (${service}). The dev auth bypass is unreachable there by ` +
+      'design; remove both variables from the service.',
   )
 }
 

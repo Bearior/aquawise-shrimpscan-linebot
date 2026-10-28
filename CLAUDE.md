@@ -73,8 +73,9 @@ id (`src/lib/logger.ts` redacts; bare `console.*` is a lint error).
 
 Local dev bypass: `ALLOW_DEV_LIFF_AUTH=true` + `LIFF_DEV_USER_ID` on the
 server, `VITE_DEV_LIFF_TOKEN=dev-liff` on the LIFF. The server refuses to boot
-with either variable when `K_SERVICE` is set (Cloud Run), and the LIFF compiles
-the bypass out of builds.
+with either variable when it is deployed (`src/lib/deployed.ts`: `K_SERVICE` on
+Cloud Run, `RAILWAY_SERVICE_NAME` on Railway), and the LIFF compiles the bypass
+out of builds. A new host must be added to `deployedAs()` first.
 
 ## The LIFF app (`liff-app/`)
 

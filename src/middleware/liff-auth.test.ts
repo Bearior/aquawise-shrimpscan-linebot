@@ -10,7 +10,9 @@ function fakeIdToken(aud: string, salt = ''): string {
 }
 
 // Restore KEY BY KEY: replacing process.env swaps the object identity.
-const KEYS = ['K_SERVICE', 'NODE_ENV', 'ALLOW_DEV_LIFF_AUTH', 'LIFF_DEV_USER_ID', 'LIFF_CHANNEL_ID', 'LIFF_CHANNEL_IDS'] as const
+const KEYS = [
+  'K_SERVICE', 'RAILWAY_SERVICE_NAME', 'NODE_ENV', 'ALLOW_DEV_LIFF_AUTH', 'LIFF_DEV_USER_ID', 'LIFF_CHANNEL_ID', 'LIFF_CHANNEL_IDS',
+] as const
 const saved: Record<string, string | undefined> = {}
 for (const k of KEYS) saved[k] = process.env[k]
 const originalFetch = global.fetch
@@ -162,8 +164,9 @@ describe('verifyLiffIdToken middleware', () => {
 })
 
 /**
- * The dev-auth bypass is gated on K_SERVICE, not NODE_ENV: NODE_ENV is
- * 'staging' on the public staging service.
+ * The dev-auth bypass is gated on deployedAs() (K_SERVICE or
+ * RAILWAY_SERVICE_NAME), not NODE_ENV: NODE_ENV is 'staging' on the public
+ * staging service.
  */
 describe('devAuthBypass: unreachable on a deployed host', () => {
   async function attribute(): Promise<string | undefined> {
@@ -177,6 +180,7 @@ describe('devAuthBypass: unreachable on a deployed host', () => {
 
   beforeEach(() => {
     delete process.env.K_SERVICE
+    delete process.env.RAILWAY_SERVICE_NAME
     delete process.env.NODE_ENV
     delete process.env.LIFF_CHANNEL_ID
     delete process.env.LIFF_CHANNEL_IDS
@@ -200,6 +204,12 @@ describe('devAuthBypass: unreachable on a deployed host', () => {
     expect(await attribute()).toBeUndefined()
   })
 
+  it('REFUSES on Railway staging (NODE_ENV=staging plus RAILWAY_SERVICE_NAME)', async () => {
+    process.env.NODE_ENV = 'staging'
+    process.env.RAILWAY_SERVICE_NAME = 'shrimpscan-line-bot'
+    expect(await attribute()).toBeUndefined()
+  })
+
   it('REFUSES with NODE_ENV=production locally', async () => {
     process.env.NODE_ENV = 'production'
     expect(await attribute()).toBeUndefined()
@@ -212,6 +222,11 @@ describe('devAuthBypass: unreachable on a deployed host', () => {
 
   it('boot assertion throws when a deployed revision carries the dev vars', () => {
     process.env.K_SERVICE = 'aquawise-shrimpscan-line-bot-staging'
+    expect(() => assertNoDevAuthInDeployedEnv()).toThrow(/REFUSING TO START/)
+  })
+
+  it('boot assertion throws on a Railway deployment that carries the dev vars', () => {
+    process.env.RAILWAY_SERVICE_NAME = 'shrimpscan-line-bot'
     expect(() => assertNoDevAuthInDeployedEnv()).toThrow(/REFUSING TO START/)
   })
 
