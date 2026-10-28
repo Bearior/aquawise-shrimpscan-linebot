@@ -7,8 +7,12 @@ queue; workers scan or send ยอ photos. `AquaWise สแกนกุ้ง` a
 
 It is built the way `line-bot/` is built: same branches, same deploy shape,
 same LIFF auth. It is NOT yet a submodule of the umbrella. Its remote is
-`github.com/Bearior/aquawise-shrimpscan-linebot`. Nothing is deployed: a push
-runs CI and nothing else.
+`github.com/Bearior/aquawise-shrimpscan-linebot`. **Staging is live on
+Railway** (2026-10-28): project `shrimpscan-line-bot`, environment `staging`,
+service `shrimpscan-line-bot`, region Singapore, built from the Dockerfile on
+every push to `launch-prep`, at
+`https://shrimpscan-line-bot-staging.up.railway.app`. Prod is not deployed.
+The Cloud Build files below are the line-bot shape, prepared but unused.
 
 ## Branches and environments
 
@@ -20,9 +24,14 @@ runs CI and nothing else.
 
 - Feature branches start from `launch-prep` and merge back into it. Prod moves
   only by a PR from `launch-prep` into `main`.
-- **A push to `launch-prep` IS a staging deploy** (about 10 minutes). **A push
-  to `main` IS a prod deploy.** A push is never "just saving". (Once a deploy
-  exists. Today the Cloud Build triggers do not, and a push only runs CI.)
+- **A push to `launch-prep` IS a staging deploy** (Railway, about 10 minutes).
+  **A push to `main` will be a prod deploy** once a Railway `production`
+  environment tracks it (none yet). A push is never "just saving".
+- Railway env vars on staging: `NODE_ENV=staging`, `PORT=8080` (the domain
+  targets 8080), `LIFF_ID`, `LIFF_CHANNEL_ID`, `LINE_CHANNEL_TARGET=staging`;
+  the owner sets `LINE_CHANNEL_SECRET` and `LINE_CHANNEL_ACCESS_TOKEN` by hand.
+  Railway deploys without waiting for CI unless "Wait for CI" is on in the
+  service settings.
 - **CI is GitHub Actions** (`.github/workflows/ci.yml`): every push and PR to
   `launch-prep` or `main` installs, typechecks, lints, tests, runs `pnpm
   build`, and builds the Docker image. A deploy job added later must
