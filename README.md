@@ -1,5 +1,8 @@
 # shrimpscan-line-bot
 
+[![CI staging](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml/badge.svg?branch=launch-prep)](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml?query=branch%3Alaunch-prep)
+[![CI prod](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml?query=branch%3Amain)
+
 LINE bot and LIFF app for **Shrimp Scan** (สแกนกุ้ง), its own LINE Official
 Account next to น้องน้ำ. Working name `AquaWise สแกนกุ้ง`; the owner picks the
 product name. Built the way `line-bot/` is built. See `CLAUDE.md` for the
