@@ -51,9 +51,14 @@ docker build -t shrimpscan-line-bot . && docker run -p 8080:8080 shrimpscan-line
 - LIFF: every screen of the mock flow (owner, worker, onboarding, invites,
   permissions, ยอ sizes, rim fix, inbox, print sheets), against the contract in
   `liff-app/src/api/types.ts`, running on the mock API.
+- CI: `.github/workflows/ci.yml` on GitHub
+  (`Bearior/aquawise-shrimpscan-linebot`). Every push and PR to `launch-prep`
+  (staging) or `main` (prod) typechecks, lints, tests, builds and builds the
+  Docker image. Nothing deploys yet.
 - Deploy, prepared but not used: `Dockerfile`, `cloudbuild.yaml`,
-  `cloudbuild.pr.yaml`, `.github/workflows/notify-ecosystem.yml`, and the
-  owner's console steps in `docs/SETUP.md`.
+  `cloudbuild.pr.yaml`, `.github/workflows/notify-ecosystem.yml` (skips while
+  `ECOSYSTEM_BOT_PAT` is unset), and the owner's console steps in
+  `docs/SETUP.md`.
 
 ## Next
 

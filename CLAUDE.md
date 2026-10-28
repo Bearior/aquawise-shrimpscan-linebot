@@ -6,8 +6,9 @@ queue; workers scan or send ยอ photos. `AquaWise สแกนกุ้ง` a
 `shrimpscan-line-bot` are working names until the owner picks the product name.
 
 It is built the way `line-bot/` is built: same branches, same deploy shape,
-same LIFF auth. It is NOT yet a submodule of the umbrella and has no GitHub
-remote. Nothing is deployed.
+same LIFF auth. It is NOT yet a submodule of the umbrella. Its remote is
+`github.com/Bearior/aquawise-shrimpscan-linebot`. Nothing is deployed: a push
+runs CI and nothing else.
 
 ## Branches and environments
 
@@ -20,8 +21,12 @@ remote. Nothing is deployed.
 - Feature branches start from `launch-prep` and merge back into it. Prod moves
   only by a PR from `launch-prep` into `main`.
 - **A push to `launch-prep` IS a staging deploy** (about 10 minutes). **A push
-  to `main` IS a prod deploy.** A push is never "just saving". (Once the
-  triggers exist. Today there is no remote.)
+  to `main` IS a prod deploy.** A push is never "just saving". (Once a deploy
+  exists. Today the Cloud Build triggers do not, and a push only runs CI.)
+- **CI is GitHub Actions** (`.github/workflows/ci.yml`): every push and PR to
+  `launch-prep` or `main` installs, typechecks, lints, tests, runs `pnpm
+  build`, and builds the Docker image. A deploy job added later must
+  `needs: gate`, so a red gate never deploys.
 - Each environment has TWO LINE channels: the Messaging API channel (the OA:
   webhook, secret, access token) and a LINE Login channel that holds the LIFF
   app (a LIFF cannot live on a Messaging API channel). Staging holds only
@@ -128,8 +133,9 @@ pnpm test:run && (cd liff-app && pnpm test:run)
 pnpm build                  # LIFF into public/liff, then the server into dist
 ```
 
-The gate in `cloudbuild.yaml` step 1 is exactly those typecheck, lint and test
-commands. Keep `cloudbuild.pr.yaml` identical.
+The gate is exactly those typecheck, lint and test commands, in
+`.github/workflows/ci.yml` (which then builds, and builds the Docker image),
+`cloudbuild.yaml` step 1 and `cloudbuild.pr.yaml`. Keep all three in step.
 
 Windows: run `pnpm mock` from Git Bash or PowerShell as is (no inline env
 syntax in the scripts). Git Bash mangles `origin/x:path` arguments; set
