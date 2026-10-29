@@ -1,12 +1,12 @@
 // Load a local .env in development only.
 //
 // `dotenv` is a devDependency, so it does not exist in the production image.
-// The test is the deployed host (Cloud Run's K_SERVICE or Railway's ids,
-// src/lib/deployed.ts), not NODE_ENV: staging runs NODE_ENV=staging, and in
-// line-bot a NODE_ENV test made the staging container die at import before it
-// could bind $PORT.
-const { deployedHost } = await import('./lib/deployed.js')
-if (process.env.NODE_ENV !== 'production' && !deployedHost()) {
+// The test is `deployedAs()` (K_SERVICE on Cloud Run, RAILWAY_SERVICE_NAME on
+// Railway, absent locally), not NODE_ENV: staging runs NODE_ENV=staging, and
+// in line-bot a NODE_ENV test made the staging container die at import before
+// it could bind $PORT.
+const { deployedAs } = await import('./lib/deployed.js')
+if (process.env.NODE_ENV !== 'production' && !deployedAs()) {
   try {
     const dotenv = await import('dotenv')
     dotenv.config()

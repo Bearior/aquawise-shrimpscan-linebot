@@ -7,6 +7,8 @@
  * place bare `console.*` is allowed (eslint `no-console`).
  */
 
+import { deployedAs } from './deployed.js'
+
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 const LOG_PREFIX = '[shrimpscan-bot]'
@@ -65,8 +67,8 @@ function normalizeArgs(args: unknown[]): { message: string; meta?: Record<string
 function emit(level: LogLevel, rawMessage: string, rawMeta?: Record<string, unknown>): void {
   const message = redactString(rawMessage)
   const meta = rawMeta ? (redactValue(rawMeta) as Record<string, unknown>) : undefined
-  // Deployed (Cloud Run): one JSON line per entry, which Cloud Logging parses.
-  if (process.env.K_SERVICE) {
+  // Deployed: one JSON line per entry, which Cloud Logging and Railway parse.
+  if (deployedAs()) {
     const entry = { severity: level.toUpperCase(), message: `${LOG_PREFIX} ${message}`, timestamp: new Date().toISOString(), ...meta }
     const line = JSON.stringify(entry) + '\n'
     if (level === 'error' || level === 'warn') process.stderr.write(line)

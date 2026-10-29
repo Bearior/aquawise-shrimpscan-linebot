@@ -1,6 +1,7 @@
 /**
- * A scan's photo and its view: POST /scans?pondId= (the photo as the raw
- * body, JPEG, PNG or WebP, at most 12 MB) and GET /scans/:id.
+ * A scan's photo, its view and its save: POST /scans?pondId= (the photo as
+ * the raw body, JPEG, PNG or WebP, at most 12 MB), GET /scans/:id and
+ * POST /scans/:id/save. Measuring is measure.ts.
  *
  * Upload order: the photo is checked first (format and size from its bytes,
  * never the Content-Type alone), then the pond and the person. Then the scan
@@ -13,55 +14,69 @@
  * prod keeps no photo size, so it rides in flags as `size:<W>x<H>`, beside
  * the plan's `remeasure`, `note:` and `fixed:` entries. The guess is the
  * scan's rim_ellipse until the scan is measured.
+ *
+ * Save puts the measured scan in the pond for today (`sample_date`, one per
+ * pond per day) and writes น้องน้ำ's growth row for that pond-day through
+ * its own guarded RPC. A worker's note chips ride in flags as `note:<text>`.
  */
 
 import { createHash } from 'node:crypto'
 import express, { Router, type NextFunction, type Request, type Response } from 'express'
-import type { Scan, ScanCreateResponse } from '../../contract/types.js'
+import type { SaveResponse, Scan, ScanCreateResponse, ScanResult } from '../../contract/types.js'
 import { ApiError, requireFarm } from '../../data/context.js'
 import type { FarmRow, MemberRow, PondRow, Repos, ScanRow } from '../../data/types.js'
+import { bangkokDay, daysBetween } from '../../domain/farm.js'
 import { personName } from '../../domain/names.js'
 import { netView, pondNet } from '../../domain/nets.js'
 import { CENTRED_RING, ringToPoints } from '../../domain/rim-geometry.js'
+import { foundOf, mayFix, mayMeasure, photoSizeOf, scanFor, toScanResult } from '../../domain/scan-view.js'
 import { imageInfo, type ImageInfo } from '../../lib/image-size.js'
 import { logger } from '../../lib/logger.js'
 import type { SizingClient } from '../../lib/sizing.js'
 import { bodyErrors } from './errors.js'
 import { handle, type GetRepos } from './handle.js'
 import { oneAtATime } from './lock.js'
-import { pondOf } from './ponds.js'
+import { farmView, pondOf, tileFor } from './ponds.js'
 
 export const MAX_PHOTO_BYTES = 12 * 1024 * 1024
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const EXTENSION: Record<ImageInfo['type'], string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
-const SIZE_FLAG = /^size:(\d+)x(\d+)$/
-
-/** The photo's px from its `size:<W>x<H>` flag. */
-export function photoSizeOf(flags: string[]): { width: number; height: number } | null {
-  for (const f of flags) {
-    const m = SIZE_FLAG.exec(f)
-    if (m) return { width: Number(m[1]), height: Number(m[2]) }
-  }
-  return null
-}
+const NOTES_MAX = 10
+const NOTE_CHARS_MAX = 80
+/** growth_samples has no age bound; sizing_measurements' 0..400 is kept here too. */
+const AGE_DAYS_MAX = 400
 
 export function scanStatus(row: ScanRow): Scan['status'] {
   if (row.sampleDate) return 'saved'
   return row.status === 'ok' ? 'measured' : 'waiting'
 }
 
-/** The scan as the LIFF reads it. Nothing measured yet: no result, no dots. */
-export async function scanView(repos: Repos, farmId: string, row: ScanRow): Promise<Scan> {
-  const [ponds, nets, members, urls] = await Promise.all([
+const isMeasured = (row: ScanRow) => row.status === 'ok' && row.abw !== null && row.perKg !== null && row.refCm !== null
+
+/** The pond's saved scan before this one (`saved` newest first). */
+function previousOf(saved: ScanRow[], row: ScanRow): ScanResult['previous'] {
+  const before = row.sampleDate ?? bangkokDay()
+  const p = saved.find((s) => s.id !== row.id && s.sampleDate !== null && s.sampleDate < before && s.abw !== null)
+  return p ? { abw: p.abw!, date: p.sampleDate! } : null
+}
+
+/** The scan as `me` reads it: the result once measured (a worker gets only the dots). */
+export async function scanView(repos: Repos, farmId: string, row: ScanRow, me: MemberRow): Promise<Scan> {
+  const measured = isMeasured(row)
+  const [ponds, nets, members, urls, saved] = await Promise.all([
     repos.ponds.ofFarm(farmId),
     repos.nets.ofFarm(farmId),
     repos.members.ofFarm(farmId),
     row.imageFileId ? repos.photos.urls([row.imageFileId]) : Promise.resolve({} as Record<string, string>),
+    measured ? repos.scans.savedOfPond(row.pondId) : Promise.resolve([] as ScanRow[]),
   ])
   const pond = ponds.find((p) => p.id === row.pondId)
   const size = photoSizeOf(row.flags)
   const net = pond ? pondNet(nets, pond) : null
-  return {
+  const W = size?.width ?? 0
+  const H = size?.height ?? 0
+  const sized = measured && size !== null
+  return scanFor(me, {
     id: row.id,
     pondId: row.pondId,
     pondCode: pond?.code ?? '',
@@ -73,10 +88,67 @@ export async function scanView(repos: Repos, farmId: string, row: ScanRow): Prom
     photoBy: personName(members, row.lineUserId),
     photoAt: row.createdAt,
     status: scanStatus(row),
-    result: null,
-    found: null,
-    measuredBy: null,
-    canFix: false,
+    result: sized ? toScanResult(row, { id: row.netId ?? '', cm: row.refCm! }, W, H, previousOf(saved, row)) : null,
+    found: sized ? (foundOf(row, W, H) ?? []) : null,
+    measuredBy: measured ? personName(members, row.lineUserId) : null,
+    canFix: measured && mayFix(me, row),
+  })
+}
+
+/** The body's note chips, trimmed; empty ones dropped. */
+function parseNotes(body: unknown): string[] {
+  const notes = (body as { notes?: unknown } | undefined)?.notes
+  if (notes === undefined) return []
+  if (!Array.isArray(notes) || notes.length > NOTES_MAX) throw new ApiError(400, 'bad_request')
+  return notes
+    .map((n: unknown) => {
+      if (typeof n !== 'string' || n.trim().length > NOTE_CHARS_MAX) throw new ApiError(400, 'bad_request')
+      return n.trim()
+    })
+    .filter(Boolean)
+}
+
+/**
+ * น้องน้ำ's growth row for the pond-day, through the RPC its own scan writes
+ * with. The OA reads its own scans, so a miss is logged, never the save's
+ * failure.
+ */
+export async function mirrorGrowth(repos: Repos, farm: FarmRow, row: ScanRow, day: string): Promise<void> {
+  try {
+    const cycle = await repos.cycles.openOf(row.pondId)
+    const age = cycle?.stockedOn ? daysBetween(cycle.stockedOn, day) : null
+    const outcome = await repos.growth.writePhotoDay({
+      farmKey: farm.createdBy,
+      pondId: row.pondId,
+      day,
+      cycleId: cycle?.id ?? null,
+      ageDays: age !== null && age >= 0 && age <= AGE_DAYS_MAX ? age : null,
+      abw: row.abw!,
+      lo: row.abwLo,
+      hi: row.abwHi,
+      n: row.n!,
+      perKg: row.perKg!,
+    })
+    if (outcome !== 'written') logger.info('[liff] the pond-day kept its other growth row', { outcome })
+  } catch (err) {
+    logger.warn('[liff] could not write the pond-day growth row', { error: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+/** The save's answer: how far the person is today, and (not for a worker) when the pond reaches size. */
+async function saveAnswer(repos: Repos, farm: FarmRow, me: MemberRow, pondId: string, today: string): Promise<SaveResponse> {
+  const view = await farmView(repos, farm, me)
+  const pond = view.ponds.find((p) => p.id === pondId)
+  const live = new Set(view.ponds.map((p) => p.id))
+  const mine = me.role === 'owner' ? [...live] : me.pondIds.filter((id) => live.has(id))
+  const done = new Set((await repos.scans.savedOfFarm(farm.id, today)).filter((s) => s.sampleDate === today).map((s) => s.pondId))
+  const scans = pond && me.role !== 'worker' ? (await repos.scans.savedOfPond(pond.id)).filter((s) => s.abw !== null && s.perKg !== null) : []
+  return {
+    pondId,
+    pondCode: pond?.code ?? '',
+    doneToday: mine.filter((id) => done.has(id)).length,
+    mineTotal: mine.length,
+    reachOn: pond && me.role !== 'worker' ? tileFor(view, pond, scans).reachOn : null,
   }
 }
 
@@ -162,17 +234,40 @@ export function scansRouter(getRepos: GetRepos, sizing: SizingClient): Router {
       const sha256 = createHash('sha256').update(photo).digest('hex')
       // One photo at a time: a double tap waits, then is the same scan.
       const row = await oneAtATime(`upload:${farm.id}:${sha256}`, () => store(repos, sizing, farm, me, pond, photo, info, sha256))
-      return { scan: await scanView(repos, farm.id, row) }
+      return { scan: await scanView(repos, farm.id, row, me) }
     }),
   )
 
   r.get(
     '/scans/:id',
     handle(getRepos, async ({ req, repos, ctx }): Promise<Scan> => {
-      const { farm } = requireFarm(ctx)
+      const { farm, me } = requireFarm(ctx)
       const row = await repos.scans.byId(req.params.id!)
       if (!row || row.farmId !== farm.id) throw new ApiError(404, 'not_found')
-      return scanView(repos, farm.id, row)
+      return scanView(repos, farm.id, row, me)
+    }),
+  )
+
+  r.post(
+    '/scans/:id/save',
+    handle(getRepos, async ({ req, repos, ctx }): Promise<SaveResponse> => {
+      const { farm, me } = requireFarm(ctx)
+      const notes = parseNotes(req.body)
+      const found = await repos.scans.byId(req.params.id!)
+      if (!found || found.farmId !== farm.id) throw new ApiError(404, 'not_found')
+      // One save into a pond at a time: two people saving it at once leave one scan in it.
+      return oneAtATime(`save:${found.pondId}`, async () => {
+        const row = await repos.scans.byId(found.id)
+        if (!row) throw new ApiError(404, 'not_found')
+        if (!mayMeasure(me, row)) throw new ApiError(403, 'not_allowed')
+        if (!isMeasured(row) || !row.n) throw new ApiError(409, 'not_measured')
+        const today = bangkokDay()
+        if (row.sampleDate && row.sampleDate !== today) throw new ApiError(409, 'already_saved')
+        await repos.scans.unsaveDay(row.pondId, today, row.id)
+        await repos.scans.update(row.id, { sampleDate: today, sampleDateSource: 'farmer', flags: [...row.flags, ...notes.map((n) => `note:${n}`)] })
+        await mirrorGrowth(repos, farm, row, today)
+        return saveAnswer(repos, farm, me, row.pondId, today)
+      })
     }),
   )
 

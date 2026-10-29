@@ -55,5 +55,17 @@ export function supabasePhotos(db: SupabaseClient): PhotosRepo {
       const { error } = await db.from('record_image_files').delete().eq('id', id)
       if (error) throw dbFail('record_image_files delete', error)
     },
+    async read(imageFileId) {
+      const { data, error } = await db.from('record_image_files').select('backend, ref, mime').eq('id', imageFileId).maybeSingle()
+      if (error) throw dbFail('record_image_files read', error)
+      const row = data as { backend: string; ref: string; mime: string | null } | null
+      if (!row || row.backend !== 'supabase') return null
+      const got = await db.storage.from(PHOTO_BUCKET).download(row.ref)
+      if (got.error || !got.data) {
+        logger.warn('[db] could not read a scan photo', { error: got.error?.message ?? 'no data' })
+        return null
+      }
+      return { bytes: Buffer.from(await got.data.arrayBuffer()), mime: row.mime ?? got.data.type }
+    },
   }
 }

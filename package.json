@@ -20,7 +20,8 @@
     "liff:build": "cd liff-app && pnpm run build",
     "prebuild": "pnpm run liff:build",
     "line:whoami": "tsx scripts/line-whoami.ts",
-    "webhook:test": "tsx scripts/send-test-webhook.ts"
+    "webhook:test": "tsx scripts/send-test-webhook.ts",
+    "db:smoke": "tsx scripts/db-smoke.ts"
   },
   "dependencies": {
     "@line/bot-sdk": "^9.4.0",

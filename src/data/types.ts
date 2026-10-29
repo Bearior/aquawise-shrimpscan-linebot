@@ -65,7 +65,11 @@ export interface ScanRow {
   measuredAt: string | null
   createdAt: string
   abw: number | null
+  /** `abw_lo_g` / `abw_hi_g`: the measure's range. */
+  abwLo: number | null
+  abwHi: number | null
   perKg: number | null
+  /** 0..1. The column holds the percent, as line-bot writes it. */
   cv: number | null
   n: number | null
   /** `remeasure`, `note:<text>`, `fixed:<userTag>:<oldPerKg>`. */
@@ -75,6 +79,46 @@ export interface ScanRow {
   netId: string | null
   /** `rim_ellipse` `[cx/W, cy/H, a/W, b/W, theta]`: น้ำ's guess until measured, then the ring it was measured on. */
   rim: number[] | null
+  /** `ref_diameter_cm`: the ยอ size it was measured at. */
+  refCm: number | null
+  /** The service's flattened canvas: the rim's radius and the canvas's side, in canvas px. */
+  rimRadiusPx: number | null
+  canvasPx: number | null
+  /** `shrimp_xy`: x0, y0, x1, y1 ... of each shrimp found, 0..1 of the canvas. */
+  shrimpXy: number[] | null
+  /** `shrimp_len_px` (line-bot migration 210): each shrimp's length in canvas px, in shrimp_xy order. Null on a database without it. */
+  lenPx: number[] | null
+  /** SAM3 calls and HTTP attempts so far: only ever added to (the spend trigger logs each change). */
+  sam3Calls: number | null
+  sam3HttpAttempts: number | null
+}
+
+/** The measure's own fields on a scan that has none yet. */
+export const UNMEASURED: Pick<ScanRow, 'abwLo' | 'abwHi' | 'refCm' | 'rimRadiusPx' | 'canvasPx' | 'shrimpXy' | 'lenPx' | 'sam3Calls' | 'sam3HttpAttempts'> = {
+  abwLo: null,
+  abwHi: null,
+  refCm: null,
+  rimRadiusPx: null,
+  canvasPx: null,
+  shrimpXy: null,
+  lenPx: null,
+  sam3Calls: null,
+  sam3HttpAttempts: null,
+}
+
+/** One write to a scan: only the fields given change. */
+export type ScanPatch = Partial<
+  Pick<
+    ScanRow,
+    | 'status' | 'sampleDate' | 'measuredAt' | 'abw' | 'abwLo' | 'abwHi' | 'perKg' | 'cv' | 'n' | 'flags' | 'netId' | 'rim'
+    | 'refCm' | 'rimRadiusPx' | 'canvasPx' | 'shrimpXy' | 'lenPx' | 'sam3Calls' | 'sam3HttpAttempts'
+  >
+> & {
+  sampleDateSource?: 'farmer' | null
+  retakeReason?: string | null
+  errorCode?: string | null
+  pxLengths?: number[] | null
+  pipelineVersion?: string | null
 }
 
 export interface ScanCreateInput {
@@ -164,6 +208,9 @@ export interface ScansRepo {
   create(input: ScanCreateInput): Promise<ScanRow | 'duplicate'>
   linkImage(id: string, imageFileId: string): Promise<void>
   setRim(id: string, ring: number[]): Promise<void>
+  update(id: string, patch: ScanPatch): Promise<void>
+  /** Takes the pond's other scans saved on `day` out of the pond: one saved scan per pond per day. */
+  unsaveDay(pondId: string, day: string, keepId: string): Promise<void>
   /** Undoes an upload that did not finish. */
   remove(id: string): Promise<void>
 }
@@ -196,6 +243,8 @@ export interface PhotosRepo {
   /** The `record_image_files` row (`backend 'supabase'`, `kind 'shrimp_scan'`); its id. */
   addFile(input: PhotoFileInput): Promise<string>
   removeFile(id: string): Promise<void>
+  /** The photo's bytes from the bucket, by `record_image_files.id`; null when it is gone. */
+  read(imageFileId: string): Promise<{ bytes: Buffer; mime: string } | null>
 }
 
 export interface PeopleRepo {
@@ -211,6 +260,38 @@ export interface PeopleRepo {
 export interface QuotaRepo {
   /** Scans the farm can still pay for today; null when it cannot be read. */
   left(farmId: string, limit: number): Promise<number | null>
+  /**
+   * `sizing_consume_quota`: the scans left after charging this one, -1 when
+   * none were left (nothing charged), null when the answer is not a number.
+   * A scan whose charge is still open is not charged again. Throws when the
+   * call fails.
+   */
+  consume(scanId: string, limit: number): Promise<number | null>
+  /** `sizing_refund_quota`: gives the scan's open charge back; false when it had none. */
+  refund(scanId: string): Promise<boolean>
+}
+
+export interface GrowthDayInput {
+  /** `p_farm_key`: the farm owner's LINE id. */
+  farmKey: string
+  pondId: string
+  day: string
+  cycleId: string | null
+  ageDays: number | null
+  abw: number
+  lo: number | null
+  hi: number | null
+  n: number
+  perKg: number
+}
+
+export interface GrowthRepo {
+  /**
+   * `write_photo_growth_sample`, the guarded write น้องน้ำ's own scan uses:
+   * the pond-day's one photo row in growth_samples (source 'lift_net_photo'),
+   * updated in place; a weighed or typed ABW of that day wins. Its outcome word.
+   */
+  writePhotoDay(input: GrowthDayInput): Promise<string>
 }
 
 export interface Repos {
@@ -223,4 +304,5 @@ export interface Repos {
   scans: ScansRepo
   cycles: CyclesRepo
   photos: PhotosRepo
+  growth: GrowthRepo
 }

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express'
 import crypto from 'node:crypto'
-import { deployedHost } from '../lib/deployed.js'
+import { deployedAs } from '../lib/deployed.js'
 import { logger } from '../lib/logger.js'
 
 /**
@@ -157,18 +157,17 @@ export async function verifyLiffToken(token: string): Promise<string> {
  * Dev-only auth bypass for the local LIFF harness. Kept exactly as line-bot
  * has it.
  *
- * Unreachable unless ALL of these hold: not on a deployed host (`deployedHost()`:
- * Cloud Run's `K_SERVICE`, or Railway's `RAILWAY_*` ids), `NODE_ENV !==
- * 'production'`, `ALLOW_DEV_LIFF_AUTH === 'true'` and `LIFF_DEV_USER_ID` is
- * set. The host test is the load-bearing term: `NODE_ENV !== 'production'` is
- * TRUE on staging, which is public (and on Railway it reads the PROD
- * database), so NODE_ENV alone is not an "am I deployed" test.
+ * Unreachable unless ALL of these hold: `deployedAs()` is null (not on Cloud
+ * Run, not on Railway), `NODE_ENV !== 'production'`, `ALLOW_DEV_LIFF_AUTH ===
+ * 'true'` and `LIFF_DEV_USER_ID` is set. `deployedAs()` is the load-bearing
+ * term: `NODE_ENV !== 'production'` is TRUE on staging, which is public, so
+ * NODE_ENV alone is not an "am I deployed" test.
  *
  * When active, `Authorization: Bearer dev-liff` (the sentinel the local LIFF
  * build sends from `VITE_DEV_LIFF_TOKEN`) is attributed to `LIFF_DEV_USER_ID`.
  */
 function devAuthBypass(req: Request): string | null {
-  if (deployedHost()) return null
+  if (deployedAs()) return null
   if (process.env['NODE_ENV'] === 'production') return null
   // Opt-in by its own name, so no other variable can turn auth off by accident.
   if (process.env['ALLOW_DEV_LIFF_AUTH'] !== 'true') return null
@@ -184,13 +183,13 @@ function devAuthBypass(req: Request): string | null {
  * deploy time instead of sitting in the environment unexplained.
  */
 export function assertNoDevAuthInDeployedEnv(): void {
-  const host = deployedHost()
-  if (!host) return
+  const service = deployedAs()
+  if (!service) return
   if (!process.env['LIFF_DEV_USER_ID'] && process.env['ALLOW_DEV_LIFF_AUTH'] !== 'true') return
   throw new Error(
     '[liff-auth] REFUSING TO START: LIFF_DEV_USER_ID / ALLOW_DEV_LIFF_AUTH are set on a ' +
-      `deployed host (${host}). The dev auth bypass is unreachable there by design; ` +
-      'remove the two variables from the service.',
+      `deployed service (${service}). The dev auth bypass is unreachable there by ` +
+      'design; remove both variables from the service.',
   )
 }
 

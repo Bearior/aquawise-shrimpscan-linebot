@@ -1,5 +1,8 @@
 # shrimpscan-line-bot
 
+[![CI staging](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml/badge.svg?branch=launch-prep)](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml?query=branch%3Alaunch-prep)
+[![CI prod](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml?query=branch%3Amain)
+
 LINE bot and LIFF app for **Shrimp Scan** (สแกนกุ้ง), its own LINE Official
 Account next to น้องน้ำ. Working name `AquaWise สแกนกุ้ง`; the owner picks the
 product name. Built the way `line-bot/` is built. See `CLAUDE.md` for the
@@ -47,23 +50,29 @@ docker build -t shrimpscan-line-bot . && docker run -p 8080:8080 shrimpscan-line
 
 - Server: `/health`, the signed `/webhook` (follow → greeting, text → a
   placeholder with a button that opens the LIFF), `/api/liff-config`, `/liff`,
-  and `GET /api/liff/me` behind LIFF auth. Every other `/api/liff/*` route
-  answers 501 `not_built_yet`.
+  and behind LIFF auth `GET /api/liff/me` plus part 1 of the contract on the
+  shared Supabase database (session, start, farm, ponds, ยอ, and the scan:
+  upload, measure, ยอ change, save, fix). Every other `/api/liff/*` route
+  answers 501 `not_built_yet`. `pnpm db:smoke` checks the database read only.
 - LIFF: every screen of the mock flow (owner, worker, onboarding, invites,
   permissions, ยอ sizes, rim fix, inbox, print sheets), against the contract in
   `liff-app/src/api/types.ts`, running on the mock API.
+- CI: `.github/workflows/ci.yml` on GitHub
+  (`Bearior/aquawise-shrimpscan-linebot`). Every push and PR to `launch-prep`
+  (staging) or `main` (prod) typechecks, lints, tests, builds and builds the
+  Docker image. Nothing deploys yet.
 - Deploy, prepared but not used: `Dockerfile`, `cloudbuild.yaml`,
-  `cloudbuild.pr.yaml`, `.github/workflows/notify-ecosystem.yml`, and the
-  owner's console steps in `docs/SETUP.md`.
+  `cloudbuild.pr.yaml`, `.github/workflows/notify-ecosystem.yml` (skips while
+  `ECOSYSTEM_BOT_PAT` is unset), and the owner's console steps in
+  `docs/SETUP.md`.
 
 ## Next
 
-1. Server routes for the LIFF contract (`liff-app/src/api/types.ts`): sessions,
-   farms, ponds, scans, nets, members, invites, settings. Supabase tables shared
-   with น้องน้ำ; decide what is new and what is reused.
-2. The measuring call: whether this bot calls the existing scan service or
-   ports its code. Nothing from line-bot's `src/scan/` is copied yet.
-3. Photo storage and upload limits for `POST /api/liff/scans`.
+1. Backend part 2 (`liff-app/src/api/types.ts`): today, team, people,
+   invites, permissions, overview and เรื่องน่าจับตา, settings, print.
+2. Part 3: the rich menu (`setup:rich-menu`) and the วิธีใช้ and
+   อากาศวันนี้ replies.
+3. The staging database again instead of prod (210 and 211 are on prod).
 4. Print: a server-made PDF, opened with `liff.openWindow({ external: true })`
    (the LIFF prints with `window.print()` today), and "ส่งเป็นรูป" into the chat.
 5. Chat: no photos in the chat any more (workers scan into the pond). Left:

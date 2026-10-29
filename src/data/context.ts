@@ -17,6 +17,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    /** Sent beside the code: why a measure failed ('no_rim', 'timeout'). */
+    readonly reason?: string,
   ) {
     super(code)
     this.name = 'ApiError'

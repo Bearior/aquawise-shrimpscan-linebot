@@ -8,8 +8,13 @@ the slug `shrimpscan-line-bot` are working names until the owner picks the
 product name.
 
 It is built the way `line-bot/` is built: same branches, same deploy shape,
-same LIFF auth. It is NOT yet a submodule of the umbrella and has no GitHub
-remote. Nothing is deployed.
+same LIFF auth. It is NOT yet a submodule of the umbrella. Its remote is
+`github.com/Bearior/aquawise-shrimpscan-linebot`. **Staging is live on
+Railway** (2026-10-28): project `shrimpscan-line-bot`, environment `staging`,
+service `shrimpscan-line-bot`, region Singapore, built from the Dockerfile on
+every push to `launch-prep`, at
+`https://shrimpscan-line-bot-staging.up.railway.app`. Prod is not deployed.
+The Cloud Build files below are the line-bot shape, prepared but unused.
 
 ## Branches and environments
 
@@ -21,9 +26,18 @@ remote. Nothing is deployed.
 
 - Feature branches start from `launch-prep` and merge back into it. Prod moves
   only by a PR from `launch-prep` into `main`.
-- **A push to `launch-prep` IS a staging deploy** (about 10 minutes). **A push
-  to `main` IS a prod deploy.** A push is never "just saving". (Once the
-  triggers exist. Today there is no remote.)
+- **A push to `launch-prep` IS a staging deploy** (Railway, about 10 minutes).
+  **A push to `main` will be a prod deploy** once a Railway `production`
+  environment tracks it (none yet). A push is never "just saving".
+- Railway env vars on staging: `NODE_ENV=staging`, `PORT=8080` (the domain
+  targets 8080), `LIFF_ID`, `LIFF_CHANNEL_ID`, `LINE_CHANNEL_TARGET=staging`;
+  the owner sets `LINE_CHANNEL_SECRET` and `LINE_CHANNEL_ACCESS_TOKEN` by hand.
+  Railway deploys without waiting for CI unless "Wait for CI" is on in the
+  service settings.
+- **CI is GitHub Actions** (`.github/workflows/ci.yml`): every push and PR to
+  `launch-prep` or `main` installs, typechecks, lints, tests, runs `pnpm
+  build`, and builds the Docker image. A deploy job added later must
+  `needs: gate`, so a red gate never deploys.
 - Each environment has TWO LINE channels: the Messaging API channel (the OA:
   webhook, secret, access token) and a LINE Login channel that holds the LIFF
   app (a LIFF cannot live on a Messaging API channel). Staging holds only
@@ -70,8 +84,9 @@ id (`src/lib/logger.ts` redacts; bare `console.*` is a lint error).
 
 Local dev bypass: `ALLOW_DEV_LIFF_AUTH=true` + `LIFF_DEV_USER_ID` on the
 server, `VITE_DEV_LIFF_TOKEN=dev-liff` on the LIFF. The server refuses to boot
-with either variable when `K_SERVICE` is set (Cloud Run), and the LIFF compiles
-the bypass out of builds.
+with either variable when it is deployed (`src/lib/deployed.ts`: `K_SERVICE` on
+Cloud Run, `RAILWAY_SERVICE_NAME` on Railway), and the LIFF compiles the bypass
+out of builds. A new host must be added to `deployedAs()` first.
 
 ## The LIFF app (`liff-app/`)
 
@@ -105,8 +120,11 @@ the bypass out of builds.
   move that makes the person wait; nothing rests on a transform; reduced
   motion cuts every move.
 - `src/api/types.ts` is **the contract** for every `/api/liff/*` call, and
-  `src/api/client.ts` is the only place a path is spelled. The server routes
-  for it are not built: every `/api/liff/*` route except `/me` answers 501
+  `src/api/client.ts` is the only place a path is spelled. Part 1 of the
+  server routes is built (`src/routes/liff/`, see "The database" below):
+  session, start, farm, ponds, ยอ, and the whole scan (upload, measure, ยอ
+  change, save, fix). Every other `/api/liff/*` route (today, team, people,
+  invites, permissions, overview, settings, print, inbox) still answers 501
   `not_built_yet` (after auth).
 - **`pnpm mock`** (or `pnpm liff:mock` from the root) runs the whole app with
   no backend on http://localhost:5199/liff/. `dev-mock/mock-api.ts` is a Vite
@@ -139,18 +157,45 @@ pnpm test:run && (cd liff-app && pnpm test:run)
 pnpm build                  # LIFF into public/liff, then the server into dist
 ```
 
-The gate in `cloudbuild.yaml` step 1 is exactly those typecheck, lint and test
-commands. Keep `cloudbuild.pr.yaml` identical.
+The gate is exactly those typecheck, lint and test commands, in
+`.github/workflows/ci.yml` (which then builds, and builds the Docker image),
+`cloudbuild.yaml` step 1 and `cloudbuild.pr.yaml`. Keep all three in step.
 
 Windows: run `pnpm mock` from Git Bash or PowerShell as is (no inline env
 syntax in the scripts). Git Bash mangles `origin/x:path` arguments; set
 `MSYS_NO_PATHCONV=1`.
 
-## Later: the database
+## The database
 
-Same Supabase as น้องน้ำ, not used yet: staging `jysoyhdvnqgnvrlfsisk`, prod
-`gydtpgeequcfbrvgubso`. Check a migration is applied to an environment before
-turning on anything that needs it.
+Same Supabase as น้องน้ำ: staging `jysoyhdvnqgnvrlfsisk`, prod
+`gydtpgeequcfbrvgubso`. **For now the staging deployment reads and writes
+PROD** (Bear, 2026-10-29: staging was unreachable), so a push to
+`launch-prep` that reaches staging writes to prod. Check a migration is
+applied to an environment before turning on anything that needs it.
+
+- **The guard** (`src/data/context.ts`): the OA touches only farms it created
+  itself (`farms.created_via = 'shrimp_scan_oa'`, `access_level 'scan_only'`).
+  A person whose farm came from น้องน้ำ (or who has any footing there) gets
+  403 `use_nong_nam` on every farm route and nothing is written for them.
+- The server reads `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `SIZING_SERVICE_URL`, `SIZING_SERVICE_SECRET` and `SCAN_DAILY_LIMIT`
+  (default 20). Without the first two every part-1 route answers 503
+  `db_not_configured`; without the sizing pair, measure answers 503
+  `measure_not_configured`.
+- Data: the repos in `src/data/supabase/` (one per table), with
+  `src/data/memory.ts` as their in-memory twin for tests. A scan is a
+  `sizing_measurements` row; its photo is in the `record-images` bucket under
+  `shrimp-scan/<farmId>/` with a `record_image_files` row. The daily quota is
+  the web scan's (`sizing_consume_quota` / `sizing_refund_quota`). A save
+  writes the pond-day's `growth_samples` row through
+  `write_photo_growth_sample`, the RPC น้องน้ำ's own scan uses.
+- On prod: migration 211 (`shrimp_scan_farm_settings`) and line-bot's 210
+  (`shrimp_len_px`, applied 2026-10-29), so a re-read keeps the grams per
+  shrimp. A database without 210 still works: the column is dropped from
+  reads and writes, and a re-read shows the dots and the average only.
+- `pnpm db:smoke` checks the database the env points at, read only: farms by
+  `created_via`, the settings table, the quota RPC. It prints counts and the
+  words prod or staging, never an id or the URL.
 
 ## Product context
 

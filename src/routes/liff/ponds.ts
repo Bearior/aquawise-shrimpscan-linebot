@@ -11,7 +11,7 @@ import { TH } from '../../copy/th.js'
 import { ApiError, requireFarm } from '../../data/context.js'
 import type { CycleRow, FarmRow, MemberRow, NetRow, PondRow, Repos, ScanRow } from '../../data/types.js'
 import { addDays, bangkokDay, daysBetween, isDay } from '../../domain/farm.js'
-import { effective } from '../../domain/permissions.js'
+import { mayFix, shrimpSizes } from '../../domain/scan-view.js'
 import { tileOf } from '../../domain/tiles.js'
 import { userTag } from '../liff-me.js'
 import { handle, type GetRepos } from './handle.js'
@@ -101,11 +101,13 @@ function lastFlag(flags: string[], prefix: string): string | null {
 function fixedOf(s: ScanRow, members: MemberRow[]): ScanSummary['fixed'] {
   const f = lastFlag(s.flags, 'fixed:')
   if (!f) return null
-  const [tag, old] = f.split(':')
+  // fixed:<tag>:<old perKg>[:<epoch ms of the fix>]
+  const [tag, old, ms] = f.split(':')
   const who = members.find((m) => userTag(m.lineUserId) === tag)
   const oldPerKg = Number(old)
   if (!Number.isFinite(oldPerKg)) return null
-  return { by: who?.name || TH.someone, at: s.measuredAt ?? s.createdAt, oldPerKg }
+  const at = ms && Number.isFinite(Number(ms)) ? new Date(Number(ms)).toISOString() : (s.measuredAt ?? s.createdAt)
+  return { by: who?.name || TH.someone, at, oldPerKg }
 }
 
 /** A saved scan as the history shows it; `previous` is the pond's scan before it. */
@@ -124,7 +126,7 @@ function summaryOf(view: FarmView, s: ScanRow, previous: ScanRow | null, photoUr
     measuredBy: by,
     fixed: fixedOf(s, view.members),
     lighter: Boolean(previous?.abw && s.abw! < previous.abw * 0.97),
-    canFix: me.role !== 'worker' && (s.lineUserId === me.lineUserId || effective(me.role).editOthers),
+    canFix: mayFix(me, s),
   }
 }
 
@@ -197,8 +199,8 @@ export function pondsRouter(getRepos: GetRepos): Router {
         pond: tile,
         growth,
         latest,
-        // The per-shrimp sizes come with the stored result (Task 6).
-        latestShrimpGrams: [],
+        // Grams per shrimp from the stored lengths (none on a database without migration 210).
+        latestShrimpGrams: scans[0] ? (shrimpSizes(scans[0])?.g ?? []) : [],
         stocking,
         tonnesNow:
           tile.abw !== null && stocking.count !== null && stocking.survival !== null ? round1((stocking.count * stocking.survival * tile.abw) / 1e6) : null,
