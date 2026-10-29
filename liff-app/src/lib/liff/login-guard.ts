@@ -137,3 +137,44 @@ export function attemptLoginOrRecover(): 'redirecting' | 'recovered' {
   liff.login({ redirectUri: cleanHref(window.location.href, true) })
   return 'redirecting'
 }
+
+const RENEW_KEY = 'aw_scan_liff_token_refresh'
+/** Renew this long before the token's own expiry, so a short visit does not die half way. */
+const ID_TOKEN_MARGIN_MS = 5 * 60 * 1000
+
+/**
+ * Whether an ID token whose `exp` claim (seconds) is this can still be sent.
+ * Outside the LINE client the SDK keeps the login in localStorage and never
+ * renews it: an hour after the last login `isLoggedIn()` is still true while
+ * LINE refuses the token and every call answers 401 (staging, 2026-10-29, the
+ * endpoint URL opened in LINE's ordinary in-app browser). No `exp` means we
+ * cannot tell, so the server decides.
+ */
+export function idTokenFresh(exp: number | undefined, now = Date.now()): boolean {
+  if (typeof exp !== 'number') return true
+  return exp * 1000 - now > ID_TOKEN_MARGIN_MS
+}
+
+/**
+ * Drop the stored login and go round LINE Login for a fresh one. Outside the
+ * client only: in-client LINE owns the login and a redirect loops.
+ */
+export function renewLogin(): void {
+  try {
+    liff.logout()
+  } catch {
+    /* nothing stored is fine */
+  }
+  liff.login({ redirectUri: cleanHref(window.location.href, true) })
+}
+
+/**
+ * The boot's own renewal, at most once a round trip (the URL marker) and once
+ * per TTL, so a login LINE keeps refusing ends on the error screen, not a loop.
+ * True when the redirect has started.
+ */
+export function renewLoginOnce(): boolean {
+  if (hasRetryMarker() || !consumeOnceWithinTtl(RENEW_KEY)) return false
+  renewLogin()
+  return true
+}

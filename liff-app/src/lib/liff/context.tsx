@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import liff from '@line/liff'
 import { initLiff } from './init'
-import { attemptLoginOrRecover, consumeOnceWithinTtl, resetLoginGuard, stripRetryMarker } from './login-guard'
+import { attemptLoginOrRecover, idTokenFresh, renewLoginOnce, resetLoginGuard, stripRetryMarker } from './login-guard'
 import { checkBuildFreshness } from './build-version'
 
 export interface LiffState {
@@ -74,20 +74,22 @@ export function LiffProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        resetLoginGuard()
-        stripRetryMarker()
-
-        // Logged in but no ID token: the session predates the openid scope. One
-        // re-login outside the client can pick it up; in-client it would loop.
-        if (!liff.getIDToken() && !inClient && consumeOnceWithinTtl('aw_scan_liff_token_refresh')) {
+        // Logged in, but outside the client the stored ID token may be missing
+        // (the session predates the openid scope) or past its hour. One
+        // re-login picks up a fresh one; in-client it would loop. Checked
+        // before the marker is stripped: the marker says we already went round.
+        const idToken = liff.getIDToken()
+        if (!inClient && !(idToken && idTokenFresh(liff.getDecodedIDToken()?.exp)) && renewLoginOnce()) {
           settled = true
           clearTimeout(bootTimer)
-          liff.login({ redirectUri: window.location.href })
           return
         }
-        if (!liff.getIDToken() && inClient) {
+        if (!idToken && inClient) {
           console.warn('[LIFF] in-client with no ID token; check the LIFF app openid scope')
         }
+
+        resetLoginGuard()
+        stripRetryMarker()
 
         ready({ isInClient: inClient })
         try {

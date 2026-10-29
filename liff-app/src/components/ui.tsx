@@ -1,6 +1,8 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { Icon, type IconName } from './Icon'
 import { ApiAuthError, ApiError, ApiTimeoutError } from '@/lib/api-fetch'
+import { useLiff } from '@/lib/liff/context'
+import { renewLogin } from '@/lib/liff/login-guard'
 import { ERR } from '@/copy/th'
 
 type BtnKind = 'p' | 's' | 'l' | 'd'
@@ -178,15 +180,20 @@ export function errorText(error: unknown): { title: string; detail?: string; cod
 }
 
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
-  const t = errorText(error)
+  const liffState = useLiff()
+  // Outside the LINE app a 401 is a stored login LINE has stopped taking.
+  // Sending it again cannot work; a fresh login can, so ลองใหม่ does that.
+  const renew = error instanceof ApiAuthError && liffState.isReady && !liffState.isInClient && !liffState.sdkMissing
+  const t = renew ? { title: ERR.authRenew } : errorText(error)
+  const retry = renew ? renewLogin : onRetry
   return (
     <div className="state" role="alert">
       <span className="nn av-nn" aria-hidden="true" />
       <b>{t.title}</b>
       {t.detail ? <span>{t.detail}</span> : null}
       {t.code ? <span className="data">{t.code}</span> : null}
-      {onRetry ? (
-        <Btn kind="s" icon="redo" onClick={onRetry}>
+      {retry ? (
+        <Btn kind="s" icon="redo" onClick={retry}>
           {ERR.retry}
         </Btn>
       ) : null}
