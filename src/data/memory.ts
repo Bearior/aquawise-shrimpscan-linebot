@@ -10,7 +10,7 @@
 
 import { DEFAULT_TARGET_PER_KG } from '../domain/farm.js'
 import { ApiError } from './context.js'
-import { OA_CREATED_VIA, type FarmRow, type MemberRow, type PondRow, type Repos } from './types.js'
+import { OA_CREATED_VIA, type CycleRow, type FarmRow, type MemberRow, type NetRow, type PondRow, type Repos, type ScanRow } from './types.js'
 
 /** The few `line_users` facts the server reads or writes. */
 export interface MemoryLineUser {
@@ -23,10 +23,20 @@ export interface MemoryLineUser {
   erased: boolean
 }
 
+/** A `cycles` row: open or closed, with the farm key that wrote it. */
+export interface MemoryCycle extends CycleRow {
+  farmId: string
+  lineUserId?: string
+  open: boolean
+}
+
 export interface MemoryState {
   farms: FarmRow[]
   members: MemberRow[]
   ponds: PondRow[]
+  nets: NetRow[]
+  scans: ScanRow[]
+  cycles: MemoryCycle[]
   lineUsers: MemoryLineUser[]
   /** `shrimp_scan_farm_settings.target_per_kg` by farm id. */
   targets: Record<string, number>
@@ -44,7 +54,10 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
   const state: MemoryState = {
     farms: [...(seed.farms ?? [])],
     members: [...(seed.members ?? [])],
-    ponds: [...(seed.ponds ?? [])],
+    ponds: (seed.ponds ?? []).map((p) => ({ ...p })),
+    nets: [...(seed.nets ?? [])],
+    scans: [...(seed.scans ?? [])],
+    cycles: (seed.cycles ?? []).map((c) => ({ ...c })),
     lineUsers: (seed.lineUsers ?? []).map((u) => ({ ...u })),
     targets: { ...seed.targets },
     quotaUsed: { ...seed.quotaUsed },
@@ -52,6 +65,8 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
   }
   let seq = 0
   const isOa = (farmId: string) => state.farms.find((f) => f.id === farmId)?.createdVia === OA_CREATED_VIA
+  const newestFirst = (a: ScanRow, b: ScanRow) => (b.sampleDate ?? '').localeCompare(a.sampleDate ?? '') || b.createdAt.localeCompare(a.createdAt)
+  const stockingOf = (c: MemoryCycle): CycleRow => ({ id: c.id, pondId: c.pondId, stockedOn: c.stockedOn, count: c.count, survival: c.survival })
 
   return {
     state,
@@ -96,6 +111,42 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
     ponds: {
       async ofFarm(farmId) {
         return state.ponds.filter((p) => p.farmId === farmId).sort((a, b) => a.code.localeCompare(b.code))
+      },
+      async setNet(pondId, netId) {
+        const p = state.ponds.find((x) => x.id === pondId)
+        if (p) p.netId = netId
+      },
+    },
+    nets: {
+      async ofFarm(farmId) {
+        return state.nets.filter((n) => n.farmId === farmId && !n.archivedAt).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      },
+    },
+    scans: {
+      async savedOfFarm(farmId, sinceDay) {
+        return state.scans.filter((s) => s.farmId === farmId && s.sampleDate !== null && s.sampleDate >= sinceDay).sort(newestFirst)
+      },
+      async savedOfPond(pondId) {
+        return state.scans.filter((s) => s.pondId === pondId && s.sampleDate !== null).sort(newestFirst)
+      },
+    },
+    cycles: {
+      async openOfFarm(farmId) {
+        return state.cycles.filter((c) => c.farmId === farmId && c.open).map(stockingOf)
+      },
+      async openOf(pondId) {
+        const c = state.cycles.find((x) => x.pondId === pondId && x.open)
+        return c ? stockingOf(c) : null
+      },
+      async saveStocking({ farmId, pondId, farmKey, stocking }) {
+        const c = state.cycles.find((x) => x.pondId === pondId && x.open)
+        if (c) Object.assign(c, stocking)
+        else state.cycles.push({ id: `cycle-${++seq}`, pondId, farmId, lineUserId: farmKey, open: true, ...stocking })
+      },
+    },
+    photos: {
+      async urls(ids) {
+        return Object.fromEntries(ids.map((id) => [id, `https://photos.test/${id}`]))
       },
     },
     people: {

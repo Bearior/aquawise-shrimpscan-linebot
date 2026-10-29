@@ -5,7 +5,7 @@
  * route test). Routes only ever see `Repos`.
  */
 
-import type { Role } from '../contract/types.js'
+import type { Role, Stocking } from '../contract/types.js'
 
 /** The mark a farm made by this OA carries (migration 211). */
 export const OA_CREATED_VIA = 'shrimp_scan_oa'
@@ -41,6 +41,44 @@ export interface PondRow {
   netId: string | null
 }
 
+/** A ยอ (`farm_nets`). The farm's default is its oldest live one. */
+export interface NetRow {
+  id: string
+  farmId: string
+  /** `diameter_cm`: the ยอ is round. */
+  cm: number
+  createdBy: string | null
+  createdAt: string
+  archivedAt: string | null
+}
+
+/** A scan (`sizing_measurements`), as far as the pond pages read it. */
+export interface ScanRow {
+  id: string
+  farmId: string
+  pondId: string
+  /** Who sent the photo (and measured it). */
+  lineUserId: string
+  status: string
+  /** The day it was saved into the pond; null until it is. */
+  sampleDate: string | null
+  measuredAt: string | null
+  createdAt: string
+  abw: number | null
+  perKg: number | null
+  cv: number | null
+  n: number | null
+  /** `remeasure`, `note:<text>`, `fixed:<userTag>:<oldPerKg>`. */
+  flags: string[]
+  imageFileId: string | null
+}
+
+/** A pond's open cycle (state setup, preparing or active). */
+export interface CycleRow extends Stocking {
+  id: string
+  pondId: string
+}
+
 export interface CreateOaFarmInput {
   ownerId: string
   /** The owner's LINE display name, when the token carried one. */
@@ -72,6 +110,33 @@ export interface MembersRepo {
 export interface PondsRepo {
   /** The farm's live ponds, by code. */
   ofFarm(farmId: string): Promise<PondRow[]>
+  /** The pond's own ยอ (`net_id`, `net_id_source 'assigned'`). */
+  setNet(pondId: string, netId: string): Promise<void>
+}
+
+export interface NetsRepo {
+  /** The farm's live ยอ, oldest first (the first is the farm's default). */
+  ofFarm(farmId: string): Promise<NetRow[]>
+}
+
+export interface ScansRepo {
+  /** Saved scans of the farm on or after `sinceDay`, newest first. */
+  savedOfFarm(farmId: string, sinceDay: string): Promise<ScanRow[]>
+  /** Every saved scan of the pond, newest first. */
+  savedOfPond(pondId: string): Promise<ScanRow[]>
+}
+
+export interface CyclesRepo {
+  /** The open cycle of each pond of the farm that has one. */
+  openOfFarm(farmId: string): Promise<CycleRow[]>
+  openOf(pondId: string): Promise<CycleRow | null>
+  /** Writes the open cycle's stocking, opening one (state 'active') when there is none. */
+  saveStocking(input: { farmId: string; pondId: string; farmKey: string; stocking: Stocking }): Promise<void>
+}
+
+export interface PhotosRepo {
+  /** Signed URLs (1 hour) by `record_image_files.id`; an id that cannot be signed is left out. */
+  urls(imageFileIds: string[]): Promise<Record<string, string>>
 }
 
 export interface PeopleRepo {
@@ -95,4 +160,8 @@ export interface Repos {
   ponds: PondsRepo
   people: PeopleRepo
   quota: QuotaRepo
+  nets: NetsRepo
+  scans: ScansRepo
+  cycles: CyclesRepo
+  photos: PhotosRepo
 }

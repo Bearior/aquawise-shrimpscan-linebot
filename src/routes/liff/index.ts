@@ -11,6 +11,7 @@ import { getDb } from '../../lib/db.js'
 import { verifyLiffIdToken } from '../../middleware/liff-auth.js'
 import { bodyErrors } from './errors.js'
 import type { GetRepos } from './handle.js'
+import { pondsRouter } from './ponds.js'
 import { sessionRouter } from './session.js'
 
 let cached: { db: SupabaseClient; repos: Repos } | null = null
@@ -33,5 +34,6 @@ export function liffRouter(opts: LiffRouterOptions = {}): Router {
   const r = Router()
   r.use(verifyLiffIdToken, express.json({ limit: '64kb' }), bodyErrors)
   r.use(sessionRouter(getRepos))
+  r.use(pondsRouter(getRepos))
   return r
 }

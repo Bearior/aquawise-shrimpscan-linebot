@@ -34,3 +34,27 @@ const bangkokDayFormat = new Intl.DateTimeFormat('en-CA', {
 export function bangkokDay(at: Date = new Date()): string {
   return bangkokDayFormat.format(at)
 }
+
+function partsOf(day: string): [number, number, number] {
+  const [y, m, d] = day.split('-').map(Number) as [number, number, number]
+  return [y, m, d]
+}
+
+/** 'YYYY-MM-DD' plus n calendar days. */
+export function addDays(day: string, n: number): string {
+  const [y, m, d] = partsOf(day)
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
+}
+
+/** Whole calendar days from `from` to `to`. */
+export function daysBetween(from: string, to: string): number {
+  const [ay, am, ad] = partsOf(from)
+  const [by, bm, bd] = partsOf(to)
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000)
+}
+
+/** A real calendar day written 'YYYY-MM-DD' ('2026-13-01' is not). */
+export function isDay(s: unknown): s is string {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
+  return addDays(s, 0) === s
+}

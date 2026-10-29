@@ -20,4 +20,6 @@ export const TH = {
   error: 'ขอโทษค่ะ น้ำส่งข้อความนี้ไม่สำเร็จ ลองใหม่อีกครั้งนะคะ',
   /** The owner's name when LINE gave none (a worker's note chips say who they are for). */
   ownerFallback: 'เจ้าของฟาร์ม',
+  /** Who sent a photo, when that person is no longer in the farm. */
+  someone: 'คนในฟาร์ม',
 } as const
