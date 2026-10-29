@@ -9,7 +9,9 @@ import { validateLineSignature } from './lib/line/client.js'
 import { logger } from './lib/logger.js'
 import { handleWebhookEvents } from './handlers/webhook.js'
 import { verifyLiffIdToken } from './middleware/liff-auth.js'
+import type { Repos } from './data/types.js'
 import { envName, liffMeRouter } from './routes/liff-me.js'
+import { liffRouter } from './routes/liff/index.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -18,6 +20,8 @@ export interface AppOptions {
   liffDir?: string
   /** Replaces the event handler (tests). */
   onEvents?: (events: webhook.Event[]) => Promise<void>
+  /** Replaces the database behind /api/liff (tests). */
+  repos?: Repos
 }
 
 export function createApp(opts: AppOptions = {}): express.Express {
@@ -115,6 +119,7 @@ export function createApp(opts: AppOptions = {}): express.Express {
   })
 
   app.use('/api/liff', liffMeRouter)
+  app.use('/api/liff', liffRouter({ repos: opts.repos }))
   // Every other /api/liff route the LIFF screens call is not built on the
   // server yet (the mock API in liff-app/dev-mock serves them). Auth still
   // runs first, so an unconfigured or unauthenticated call fails the same way

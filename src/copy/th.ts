@@ -18,4 +18,6 @@ export const TH = {
   placeholderButton: 'เปิดหน้าสแกนกุ้ง',
   /** reply fallback when a message could not be sent as it was. */
   error: 'ขอโทษค่ะ น้ำส่งข้อความนี้ไม่สำเร็จ ลองใหม่อีกครั้งนะคะ',
+  /** The owner's name when LINE gave none (a worker's note chips say who they are for). */
+  ownerFallback: 'เจ้าของฟาร์ม',
 } as const
