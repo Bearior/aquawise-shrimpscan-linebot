@@ -105,8 +105,11 @@ the bypass out of builds.
   move that makes the person wait; nothing rests on a transform; reduced
   motion cuts every move.
 - `src/api/types.ts` is **the contract** for every `/api/liff/*` call, and
-  `src/api/client.ts` is the only place a path is spelled. The server routes
-  for it are not built: every `/api/liff/*` route except `/me` answers 501
+  `src/api/client.ts` is the only place a path is spelled. Part 1 of the
+  server routes is built (`src/routes/liff/`, see "The database" below):
+  session, start, farm, ponds, ยอ, and the whole scan (upload, measure, ยอ
+  change, save, fix). Every other `/api/liff/*` route (today, team, people,
+  invites, permissions, overview, settings, print, inbox) still answers 501
   `not_built_yet` (after auth).
 - **`pnpm mock`** (or `pnpm liff:mock` from the root) runs the whole app with
   no backend on http://localhost:5199/liff/. `dev-mock/mock-api.ts` is a Vite
@@ -146,11 +149,36 @@ Windows: run `pnpm mock` from Git Bash or PowerShell as is (no inline env
 syntax in the scripts). Git Bash mangles `origin/x:path` arguments; set
 `MSYS_NO_PATHCONV=1`.
 
-## Later: the database
+## The database
 
-Same Supabase as น้องน้ำ, not used yet: staging `jysoyhdvnqgnvrlfsisk`, prod
-`gydtpgeequcfbrvgubso`. Check a migration is applied to an environment before
-turning on anything that needs it.
+Same Supabase as น้องน้ำ: staging `jysoyhdvnqgnvrlfsisk`, prod
+`gydtpgeequcfbrvgubso`. **For now the staging deployment reads and writes
+PROD** (Bear, 2026-10-29: staging was unreachable), so a push to
+`launch-prep` that reaches staging writes to prod. Check a migration is
+applied to an environment before turning on anything that needs it.
+
+- **The guard** (`src/data/context.ts`): the OA touches only farms it created
+  itself (`farms.created_via = 'shrimp_scan_oa'`, `access_level 'scan_only'`).
+  A person whose farm came from น้องน้ำ (or who has any footing there) gets
+  403 `use_nong_nam` on every farm route and nothing is written for them.
+- The server reads `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `SIZING_SERVICE_URL`, `SIZING_SERVICE_SECRET` and `SCAN_DAILY_LIMIT`
+  (default 20). Without the first two every part-1 route answers 503
+  `db_not_configured`; without the sizing pair, measure answers 503
+  `measure_not_configured`.
+- Data: the repos in `src/data/supabase/` (one per table), with
+  `src/data/memory.ts` as their in-memory twin for tests. A scan is a
+  `sizing_measurements` row; its photo is in the `record-images` bucket under
+  `shrimp-scan/<farmId>/` with a `record_image_files` row. The daily quota is
+  the web scan's (`sizing_consume_quota` / `sizing_refund_quota`). A save
+  writes the pond-day's `growth_samples` row through
+  `write_photo_growth_sample`, the RPC น้องน้ำ's own scan uses.
+- Migration 211 (`shrimp_scan_farm_settings`) is on prod. Line-bot's 210
+  (`shrimp_len_px`) is not: until it is, a re-read of a measured scan shows
+  the dots and the average but no grams per shrimp.
+- `pnpm db:smoke` checks the database the env points at, read only: farms by
+  `created_via`, the settings table, the quota RPC. It prints counts and the
+  words prod or staging, never an id or the URL.
 
 ## Product context
 

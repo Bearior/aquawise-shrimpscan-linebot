@@ -47,8 +47,10 @@ docker build -t shrimpscan-line-bot . && docker run -p 8080:8080 shrimpscan-line
 
 - Server: `/health`, the signed `/webhook` (follow → greeting, text → a
   placeholder with a button that opens the LIFF), `/api/liff-config`, `/liff`,
-  and `GET /api/liff/me` behind LIFF auth. Every other `/api/liff/*` route
-  answers 501 `not_built_yet`.
+  and behind LIFF auth `GET /api/liff/me` plus part 1 of the contract on the
+  shared Supabase database (session, start, farm, ponds, ยอ, and the scan:
+  upload, measure, ยอ change, save, fix). Every other `/api/liff/*` route
+  answers 501 `not_built_yet`. `pnpm db:smoke` checks the database read only.
 - LIFF: every screen of the mock flow (owner, worker, onboarding, invites,
   permissions, ยอ sizes, rim fix, inbox, print sheets), against the contract in
   `liff-app/src/api/types.ts`, running on the mock API.
@@ -58,12 +60,12 @@ docker build -t shrimpscan-line-bot . && docker run -p 8080:8080 shrimpscan-line
 
 ## Next
 
-1. Server routes for the LIFF contract (`liff-app/src/api/types.ts`): sessions,
-   farms, ponds, scans, nets, members, invites, settings. Supabase tables shared
-   with น้องน้ำ; decide what is new and what is reused.
-2. The measuring call: whether this bot calls the existing scan service or
-   ports its code. Nothing from line-bot's `src/scan/` is copied yet.
-3. Photo storage and upload limits for `POST /api/liff/scans`.
+1. Backend part 2 (`liff-app/src/api/types.ts`): today, team, people,
+   invites, permissions, overview and เรื่องน่าจับตา, settings, print.
+2. Part 3: the rich menu (`setup:rich-menu`) and the วิธีใช้ and
+   อากาศวันนี้ replies.
+3. Line-bot migration 210 (`shrimp_len_px`) on prod, so a re-read keeps the
+   grams per shrimp; then the staging database again instead of prod.
 4. Print: a server-made PDF, opened with `liff.openWindow({ external: true })`
    (the LIFF prints with `window.print()` today), and "ส่งเป็นรูป" into the chat.
 5. Chat: no photos in the chat any more (workers scan into the pond). Left:

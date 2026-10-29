@@ -113,6 +113,27 @@ BUILDER=gha-linebot@$P.iam.gserviceaccount.com
    variable). If the real URL differs from the expected one, fix the webhook URL
    (A.2) and the LIFF endpoint (A.3).
 
+## Railway staging (today)
+
+Until the Cloud Run staging service exists, staging runs on Railway
+(https://shrimpscan-line-bot-staging.up.railway.app, from `launch-prep`). Set
+these five variables on that service (Variables tab), never in a file, a
+commit or a chat:
+
+| Variable | What it is |
+|---|---|
+| `SUPABASE_URL` | the database's API URL. For now **prod's** (Bear, 2026-10-29) |
+| `SUPABASE_SERVICE_ROLE_KEY` | that project's service role key |
+| `SIZING_SERVICE_URL` | line-bot's sizing service (`/v1/rim`, `/v1/measure`) |
+| `SIZING_SERVICE_SECRET` | its shared secret |
+| `SCAN_DAILY_LIMIT` | measured photos per farm per day, default 20; at least the farm's pond count |
+
+Because staging writes to prod for now, the server touches only farms this OA
+created (`created_via = 'shrimp_scan_oa'`). To check what the two `SUPABASE_*`
+values point at, have them in your shell (or an untracked `.env`, which git
+ignores) and run `pnpm db:smoke`: read only, it prints prod or staging and
+counts, never a value or an id.
+
 ## D. Check each environment
 
 1. `<URL>/health` answers `{"status":"ok", ...}`.
@@ -121,9 +142,12 @@ BUILDER=gha-linebot@$P.iam.gserviceaccount.com
 3. "Verify" on the webhook in the Developers Console succeeds.
 4. Add the OA as a friend: the greeting arrives. Send any text: the placeholder
    arrives with the LIFF button.
-5. Open `https://liff.line.me/<LIFF_ID>` in LINE. Today the server has only
-   `/api/liff/me`, so after login the app shows ส่วนนี้ยังไม่เปิดใช้ค่ะ (code 501);
-   a 401 or a login loop means A.3 or C.4 is wrong.
+5. Open `https://liff.line.me/<LIFF_ID>` in LINE. With the database variables
+   set (below), a new person lands on starting a farm; someone whose farm is in
+   น้องน้ำ gets 403 `use_nong_nam` (no screen of its own yet, so the generic
+   error). Without them the screens answer 503 `db_not_configured`. Part-2
+   screens (today, team, settings, print) still show ส่วนนี้ยังไม่เปิดใช้ค่ะ
+   (code 501). A 401 or a login loop means A.3 or C.4 is wrong.
 6. Prove which OA each token belongs to, from this PC:
    ```bash
    cp .env.staging.example .env.staging   # fill in, never commit
