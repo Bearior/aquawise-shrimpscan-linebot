@@ -51,8 +51,9 @@ GCP project `aquawise-deployment` (`831904296386`), region `asia-southeast1`.
 
 ## B. GitHub
 
-1. Create `aquawise-tech/aquawise-shrimpscan-line-bot`, private, default branch
-   `main`. Push `main` and `launch-prep`.
+1. Done 2026-10-28: the repo is `Bearior/aquawise-shrimpscan-linebot`, with
+   `main` and `launch-prep` pushed and CI (`.github/workflows/ci.yml`) on both.
+   If it moves to `aquawise-tech`, change the remote and the names below.
 2. Add the repository secret `ECOSYSTEM_BOT_PAT` (the same PAT line-bot uses).
    If it is a fine-grained PAT, add this repo to it, or the umbrella's bump job
    cannot check the submodule out.

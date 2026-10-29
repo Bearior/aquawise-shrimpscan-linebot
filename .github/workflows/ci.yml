@@ -1,0 +1,69 @@
+name: CI
+
+# The gate: every push and every PR to launch-prep (staging) and main (prod)
+# must typecheck, lint, pass the tests, build, and build the Docker image.
+# Install, typecheck, lint and test are the same commands as step 1 of
+# cloudbuild.yaml and cloudbuild.pr.yaml; keep all three in step.
+#
+# Nothing deploys from here yet. When a deploy job is added, it must
+# `needs: gate`, so a red gate means no deploy.
+
+on:
+  push:
+    branches:
+      - launch-prep
+      - main
+  pull_request:
+    branches:
+      - launch-prep
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    # Billing guard: fail instead of idling to the 6-hour default.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm's version comes from "packageManager" in package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            liff-app/pnpm-lock.yaml
+
+      - name: Install
+        run: |
+          pnpm install --frozen-lockfile
+          cd liff-app && pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck && pnpm typecheck:liff
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test:run && (cd liff-app && pnpm test:run)
+
+      # The LIFF into public/liff, then the server into dist.
+      - name: Build
+        run: pnpm build
+
+      # What a host would build. Not pushed anywhere.
+      - name: Docker image
+        run: docker build -t shrimpscan-line-bot:ci .

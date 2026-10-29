@@ -8,8 +8,13 @@ the slug `shrimpscan-line-bot` are working names until the owner picks the
 product name.
 
 It is built the way `line-bot/` is built: same branches, same deploy shape,
-same LIFF auth. It is NOT yet a submodule of the umbrella and has no GitHub
-remote. Nothing is deployed.
+same LIFF auth. It is NOT yet a submodule of the umbrella. Its remote is
+`github.com/Bearior/aquawise-shrimpscan-linebot`. **Staging is live on
+Railway** (2026-10-28): project `shrimpscan-line-bot`, environment `staging`,
+service `shrimpscan-line-bot`, region Singapore, built from the Dockerfile on
+every push to `launch-prep`, at
+`https://shrimpscan-line-bot-staging.up.railway.app`. Prod is not deployed.
+The Cloud Build files below are the line-bot shape, prepared but unused.
 
 ## Branches and environments
 
@@ -21,9 +26,18 @@ remote. Nothing is deployed.
 
 - Feature branches start from `launch-prep` and merge back into it. Prod moves
   only by a PR from `launch-prep` into `main`.
-- **A push to `launch-prep` IS a staging deploy** (about 10 minutes). **A push
-  to `main` IS a prod deploy.** A push is never "just saving". (Once the
-  triggers exist. Today there is no remote.)
+- **A push to `launch-prep` IS a staging deploy** (Railway, about 10 minutes).
+  **A push to `main` will be a prod deploy** once a Railway `production`
+  environment tracks it (none yet). A push is never "just saving".
+- Railway env vars on staging: `NODE_ENV=staging`, `PORT=8080` (the domain
+  targets 8080), `LIFF_ID`, `LIFF_CHANNEL_ID`, `LINE_CHANNEL_TARGET=staging`;
+  the owner sets `LINE_CHANNEL_SECRET` and `LINE_CHANNEL_ACCESS_TOKEN` by hand.
+  Railway deploys without waiting for CI unless "Wait for CI" is on in the
+  service settings.
+- **CI is GitHub Actions** (`.github/workflows/ci.yml`): every push and PR to
+  `launch-prep` or `main` installs, typechecks, lints, tests, runs `pnpm
+  build`, and builds the Docker image. A deploy job added later must
+  `needs: gate`, so a red gate never deploys.
 - Each environment has TWO LINE channels: the Messaging API channel (the OA:
   webhook, secret, access token) and a LINE Login channel that holds the LIFF
   app (a LIFF cannot live on a Messaging API channel). Staging holds only
@@ -70,8 +84,9 @@ id (`src/lib/logger.ts` redacts; bare `console.*` is a lint error).
 
 Local dev bypass: `ALLOW_DEV_LIFF_AUTH=true` + `LIFF_DEV_USER_ID` on the
 server, `VITE_DEV_LIFF_TOKEN=dev-liff` on the LIFF. The server refuses to boot
-with either variable when `K_SERVICE` is set (Cloud Run), and the LIFF compiles
-the bypass out of builds.
+with either variable when it is deployed (`src/lib/deployed.ts`: `K_SERVICE` on
+Cloud Run, `RAILWAY_SERVICE_NAME` on Railway), and the LIFF compiles the bypass
+out of builds. A new host must be added to `deployedAs()` first.
 
 ## The LIFF app (`liff-app/`)
 
@@ -142,8 +157,9 @@ pnpm test:run && (cd liff-app && pnpm test:run)
 pnpm build                  # LIFF into public/liff, then the server into dist
 ```
 
-The gate in `cloudbuild.yaml` step 1 is exactly those typecheck, lint and test
-commands. Keep `cloudbuild.pr.yaml` identical.
+The gate is exactly those typecheck, lint and test commands, in
+`.github/workflows/ci.yml` (which then builds, and builds the Docker image),
+`cloudbuild.yaml` step 1 and `cloudbuild.pr.yaml`. Keep all three in step.
 
 Windows: run `pnpm mock` from Git Bash or PowerShell as is (no inline env
 syntax in the scripts). Git Bash mangles `origin/x:path` arguments; set

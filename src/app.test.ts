@@ -8,7 +8,7 @@ import { createApp } from './app.js'
 
 const KEYS = [
   'LINE_CHANNEL_SECRET', 'LINE_CHANNEL_ACCESS_TOKEN', 'LIFF_ID', 'LIFF_CHANNEL_ID', 'LIFF_CHANNEL_IDS',
-  'NODE_ENV', 'K_SERVICE', 'ALLOW_DEV_LIFF_AUTH', 'LIFF_DEV_USER_ID',
+  'NODE_ENV', 'K_SERVICE', 'RAILWAY_SERVICE_NAME', 'ALLOW_DEV_LIFF_AUTH', 'LIFF_DEV_USER_ID',
 ] as const
 const saved: Record<string, string | undefined> = {}
 for (const k of KEYS) saved[k] = process.env[k]

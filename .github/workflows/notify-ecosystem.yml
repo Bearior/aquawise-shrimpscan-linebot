@@ -1,11 +1,10 @@
 name: Notify ecosystem umbrella
 
-# The only GitHub Actions workflow in this repo. CI is the Cloud Build PR gate
-# (cloudbuild.pr.yaml), which keeps Actions minutes at zero.
-#
 # Tells aquawise-tech/aquawise-ecosystem that launch-prep moved, so the
 # umbrella bumps its submodule pin. Needs the ECOSYSTEM_BOT_PAT secret (the
-# same PAT line-bot uses; a fine-grained PAT must list this repo).
+# same PAT line-bot uses; a fine-grained PAT must list this repo). This repo
+# is not a submodule of the umbrella yet: until the secret exists, the job
+# says so and passes instead of failing every push. CI is ci.yml.
 
 on:
   push:
@@ -22,6 +21,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ECOSYSTEM_BOT_PAT }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::ECOSYSTEM_BOT_PAT is not set; the umbrella is not told. Fine until this repo is a submodule."
+            exit 0
+          fi
           gh api \
             -X POST \
             /repos/aquawise-tech/aquawise-ecosystem/dispatches \

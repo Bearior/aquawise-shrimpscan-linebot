@@ -1,5 +1,8 @@
 # shrimpscan-line-bot
 
+[![CI staging](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml/badge.svg?branch=launch-prep)](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml?query=branch%3Alaunch-prep)
+[![CI prod](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Bearior/aquawise-shrimpscan-linebot/actions/workflows/ci.yml?query=branch%3Amain)
+
 LINE bot and LIFF app for **Shrimp Scan** (สแกนกุ้ง), its own LINE Official
 Account next to น้องน้ำ. Working name `AquaWise สแกนกุ้ง`; the owner picks the
 product name. Built the way `line-bot/` is built. See `CLAUDE.md` for the
@@ -54,9 +57,14 @@ docker build -t shrimpscan-line-bot . && docker run -p 8080:8080 shrimpscan-line
 - LIFF: every screen of the mock flow (owner, worker, onboarding, invites,
   permissions, ยอ sizes, rim fix, inbox, print sheets), against the contract in
   `liff-app/src/api/types.ts`, running on the mock API.
+- CI: `.github/workflows/ci.yml` on GitHub
+  (`Bearior/aquawise-shrimpscan-linebot`). Every push and PR to `launch-prep`
+  (staging) or `main` (prod) typechecks, lints, tests, builds and builds the
+  Docker image. Nothing deploys yet.
 - Deploy, prepared but not used: `Dockerfile`, `cloudbuild.yaml`,
-  `cloudbuild.pr.yaml`, `.github/workflows/notify-ecosystem.yml`, and the
-  owner's console steps in `docs/SETUP.md`.
+  `cloudbuild.pr.yaml`, `.github/workflows/notify-ecosystem.yml` (skips while
+  `ECOSYSTEM_BOT_PAT` is unset), and the owner's console steps in
+  `docs/SETUP.md`.
 
 ## Next
 
