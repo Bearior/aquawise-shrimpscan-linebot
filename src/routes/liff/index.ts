@@ -12,6 +12,7 @@ import { sizingService, type SizingClient } from '../../lib/sizing.js'
 import { verifyLiffIdToken } from '../../middleware/liff-auth.js'
 import { bodyErrors } from './errors.js'
 import type { GetRepos } from './handle.js'
+import { measureRouter } from './measure.js'
 import { netsRouter } from './nets.js'
 import { scansRouter } from './scans.js'
 import { pondsRouter } from './ponds.js'
@@ -41,6 +42,8 @@ export function liffRouter(opts: LiffRouterOptions = {}): Router {
   r.use(sessionRouter(getRepos))
   r.use(pondsRouter(getRepos))
   r.use(netsRouter(getRepos))
-  r.use(scansRouter(getRepos, opts.sizing ?? sizingService))
+  const sizing = opts.sizing ?? sizingService
+  r.use(scansRouter(getRepos, sizing))
+  r.use(measureRouter(getRepos, sizing))
   return r
 }

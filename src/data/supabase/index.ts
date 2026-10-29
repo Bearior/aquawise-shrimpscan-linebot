@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Repos } from '../types.js'
 import { supabaseCycles } from './cycles.js'
 import { supabaseFarms } from './farms.js'
+import { supabaseGrowth } from './growth.js'
 import { supabaseMembers } from './members.js'
 import { supabaseNets } from './nets.js'
 import { supabasePeople } from './people.js'
@@ -21,5 +22,6 @@ export function createSupabaseRepos(db: SupabaseClient): Repos {
     scans: supabaseScans(db),
     cycles: supabaseCycles(db),
     photos: supabasePhotos(db),
+    growth: supabaseGrowth(db),
   }
 }

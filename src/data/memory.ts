@@ -10,7 +10,19 @@
 
 import { DEFAULT_TARGET_PER_KG } from '../domain/farm.js'
 import { ApiError } from './context.js'
-import { OA_CREATED_VIA, type CycleRow, type FarmRow, type MemberRow, type NetRow, type PondRow, type Repos, type ScanRow } from './types.js'
+import {
+  OA_CREATED_VIA,
+  UNMEASURED,
+  type CycleRow,
+  type FarmRow,
+  type GrowthDayInput,
+  type MemberRow,
+  type NetRow,
+  type PondRow,
+  type Repos,
+  type ScanPatch,
+  type ScanRow,
+} from './types.js'
 
 /** The few `line_users` facts the server reads or writes. */
 export interface MemoryLineUser {
@@ -30,9 +42,14 @@ export interface MemoryCycle extends CycleRow {
   open: boolean
 }
 
-/** A `sizing_measurements` row as the memory store keeps it. */
-export interface MemoryScan extends ScanRow {
+/** A `sizing_measurements` row as the memory store keeps it, with the columns only a write sets. */
+export interface MemoryScan extends ScanRow, Omit<ScanPatch, keyof ScanRow> {
   sha256?: string
+}
+
+/** A `growth_samples` row that `write_photo_growth_sample` keeps (or another source's, seeded). */
+export interface MemoryGrowth extends GrowthDayInput {
+  source: string
 }
 
 /** A `record_image_files` row. */
@@ -54,7 +71,7 @@ export interface MemoryState {
   nets: NetRow[]
   scans: MemoryScan[]
   /** Storage objects by path. */
-  objects: Record<string, { mime: string; bytes: number }>
+  objects: Record<string, { mime: string; bytes: number; data: Buffer }>
   imageFiles: MemoryImageFile[]
   /** Storage refuses every put (the bucket is down). */
   failPhotoPut: boolean
@@ -66,6 +83,7 @@ export interface MemoryState {
   quotaUsed: Record<string, number>
   /** The quota cannot be read (the RPC failed). */
   quotaDown: boolean
+  growth: MemoryGrowth[]
 }
 
 export type MemoryRepos = Repos & { state: MemoryState }
@@ -87,8 +105,11 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
     targets: { ...seed.targets },
     quotaUsed: { ...seed.quotaUsed },
     quotaDown: seed.quotaDown ?? false,
+    growth: (seed.growth ?? []).map((g) => ({ ...g })),
   }
   let seq = 0
+  /** Open quota charges: scan id to farm id (sizing_quota_charges with no refunded_at). */
+  const openCharges = new Map<string, string>()
   const liveNets = (farmId: string) => state.nets.filter((n) => n.farmId === farmId && !n.archivedAt)
   const isOa = (farmId: string) => state.farms.find((f) => f.id === farmId)?.createdVia === OA_CREATED_VIA
   const newestFirst = (a: ScanRow, b: ScanRow) => (b.sampleDate ?? '').localeCompare(a.sampleDate ?? '') || b.createdAt.localeCompare(a.createdAt)
@@ -194,7 +215,7 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
         const row: MemoryScan = {
           id: `scan-${++seq}`, farmId, pondId, lineUserId, status: 'queued', sampleDate: null, measuredAt: null,
           createdAt: new Date().toISOString(), abw: null, perKg: null, cv: null, n: null, flags: [...flags],
-          imageFileId: null, netId: null, rim: null, sha256,
+          imageFileId: null, netId: null, rim: null, ...UNMEASURED, sha256,
         }
         state.scans.push(row)
         return { ...row }
@@ -206,6 +227,17 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
       async setRim(id, ring) {
         const s = state.scans.find((x) => x.id === id)
         if (s) s.rim = [...ring]
+      },
+      async update(id, patch) {
+        await tick()
+        const s = state.scans.find((x) => x.id === id)
+        if (!s) return
+        for (const [k, v] of Object.entries(patch)) if (v !== undefined) Object.assign(s, { [k]: Array.isArray(v) ? [...v] : v })
+      },
+      async unsaveDay(pondId, day, keepId) {
+        for (const s of state.scans) {
+          if (s.pondId === pondId && s.sampleDate === day && s.id !== keepId) Object.assign(s, { sampleDate: null, sampleDateSource: null })
+        }
       },
       async remove(id) {
         state.scans = state.scans.filter((s) => s.id !== id)
@@ -232,7 +264,7 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
       async put(path, bytes, mime) {
         await tick()
         if (state.failPhotoPut) throw new Error('storage put failed')
-        state.objects[path] = { mime, bytes: bytes.length }
+        state.objects[path] = { mime, bytes: bytes.length, data: Buffer.from(bytes) }
       },
       async removeObject(path) {
         delete state.objects[path]
@@ -245,6 +277,11 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
       },
       async removeFile(id) {
         state.imageFiles = state.imageFiles.filter((f) => f.id !== id)
+      },
+      async read(imageFileId) {
+        const file = state.imageFiles.find((f) => f.id === imageFileId)
+        const object = file ? state.objects[file.ref] : undefined
+        return object ? { bytes: object.data, mime: object.mime } : null
       },
     },
     people: {
@@ -260,6 +297,39 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
       async left(farmId, limit) {
         if (state.quotaDown) return null
         return Math.max(0, limit - (state.quotaUsed[farmId] ?? 0))
+      },
+      // sizing_consume_quota and sizing_refund_quota, one open charge per scan.
+      async consume(scanId, limit) {
+        await tick()
+        if (state.quotaDown) throw new Error('sizing_consume_quota failed')
+        const s = state.scans.find((x) => x.id === scanId)
+        if (!s) throw new Error('measurement_not_found')
+        const used = state.quotaUsed[s.farmId] ?? 0
+        if (openCharges.has(scanId)) return Math.max(0, limit - used)
+        if (used >= limit) return -1
+        state.quotaUsed[s.farmId] = used + 1
+        openCharges.set(scanId, s.farmId)
+        return limit - used - 1
+      },
+      async refund(scanId) {
+        const farmId = openCharges.get(scanId)
+        if (!farmId) return false
+        openCharges.delete(scanId)
+        state.quotaUsed[farmId] = Math.max(0, (state.quotaUsed[farmId] ?? 0) - 1)
+        return true
+      },
+    },
+    growth: {
+      // write_photo_growth_sample: a weighed or typed ABW of the pond-day wins; else the one photo row, in place.
+      async writePhotoDay(input) {
+        await tick()
+        const day = state.growth.filter((g) => g.pondId === input.pondId && g.day === input.day)
+        if (day.some((g) => g.source !== 'lift_net_photo')) return 'kept_other_source'
+        const row = day.find((g) => g.source === 'lift_net_photo')
+        const { cycleId, ageDays, abw, lo, hi, n, perKg } = input
+        if (row) Object.assign(row, { cycleId, ageDays, abw, lo, hi, n, perKg })
+        else state.growth.push({ ...input, source: 'lift_net_photo' })
+        return 'written'
       },
     },
   }

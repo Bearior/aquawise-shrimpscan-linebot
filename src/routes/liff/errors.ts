@@ -2,11 +2,11 @@ import type { NextFunction, Request, Response } from 'express'
 import { ApiError } from '../../data/context.js'
 import { logger } from '../../lib/logger.js'
 
-/** `ApiError` → its status and `{ error: code }`; anything else → 500, logged. */
+/** `ApiError` → its status and `{ error: code }` (with its `reason`, if any); anything else → 500, logged. */
 export function sendApiError(res: Response, err: unknown): void {
   if (res.headersSent) return
   if (err instanceof ApiError) {
-    res.status(err.status).json({ error: err.code })
+    res.status(err.status).json(err.reason ? { error: err.code, reason: err.reason } : { error: err.code })
     return
   }
   logger.error('[liff] route failed', { error: err instanceof Error ? err.message : String(err) })

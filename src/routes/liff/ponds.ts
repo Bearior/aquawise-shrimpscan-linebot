@@ -12,6 +12,7 @@ import { ApiError, requireFarm } from '../../data/context.js'
 import type { CycleRow, FarmRow, MemberRow, NetRow, PondRow, Repos, ScanRow } from '../../data/types.js'
 import { addDays, bangkokDay, daysBetween, isDay } from '../../domain/farm.js'
 import { effective } from '../../domain/permissions.js'
+import { shrimpSizes } from '../../domain/scan-view.js'
 import { tileOf } from '../../domain/tiles.js'
 import { userTag } from '../liff-me.js'
 import { handle, type GetRepos } from './handle.js'
@@ -197,8 +198,8 @@ export function pondsRouter(getRepos: GetRepos): Router {
         pond: tile,
         growth,
         latest,
-        // The per-shrimp sizes come with the stored result (Task 6).
-        latestShrimpGrams: [],
+        // Grams per shrimp from the stored lengths (none on a database without migration 210).
+        latestShrimpGrams: scans[0] ? (shrimpSizes(scans[0])?.g ?? []) : [],
         stocking,
         tonnesNow:
           tile.abw !== null && stocking.count !== null && stocking.survival !== null ? round1((stocking.count * stocking.survival * tile.abw) / 1e6) : null,

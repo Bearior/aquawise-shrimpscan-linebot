@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Net } from '../../contract/types.js'
 import { createApp } from '../../app.js'
 import { createMemoryRepos, type MemoryRepos, type MemoryState } from '../../data/memory.js'
-import type { FarmRow, MemberRow, NetRow, PondRow, ScanRow } from '../../data/types.js'
+import { UNMEASURED, type FarmRow, type MemberRow, type NetRow, type PondRow, type ScanRow } from '../../data/types.js'
 import { netOf } from './nets.js'
 
 const KEYS = ['ALLOW_DEV_LIFF_AUTH', 'LIFF_DEV_USER_ID', 'K_SERVICE', 'NODE_ENV', 'SUPABASE_URL'] as const
@@ -67,7 +67,7 @@ function measuredWith(netId: string): ScanRow {
   return {
     id: 's1', farmId: farm.id, pondId: 'p1', lineUserId: WORKER, status: 'ok', sampleDate: '2026-10-25',
     measuredAt: '2026-10-25T01:00:00Z', createdAt: '2026-10-25T00:59:00Z', abw: 12, perKg: 83, cv: 0.1, n: 60,
-    flags: [], imageFileId: 'img-1', netId, rim: null,
+    flags: [], imageFileId: 'img-1', netId, rim: null, ...UNMEASURED,
   }
 }
 

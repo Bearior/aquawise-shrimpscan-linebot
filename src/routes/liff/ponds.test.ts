@@ -2,8 +2,9 @@ import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../../app.js'
 import { createMemoryRepos, type MemoryRepos, type MemoryState } from '../../data/memory.js'
-import type { FarmRow, MemberRow, NetRow, PondRow, ScanRow } from '../../data/types.js'
+import { UNMEASURED, type FarmRow, type MemberRow, type NetRow, type PondRow, type ScanRow } from '../../data/types.js'
 import { addDays, bangkokDay } from '../../domain/farm.js'
+import { shrimpWeightG } from '../../domain/scan-view.js'
 import { userTag } from '../liff-me.js'
 
 const KEYS = ['ALLOW_DEV_LIFF_AUTH', 'LIFF_DEV_USER_ID', 'K_SERVICE', 'NODE_ENV', 'SUPABASE_URL'] as const
@@ -55,7 +56,7 @@ function scan(id: string, pondId: string, day: string, abw: number, over: Partia
   return {
     id, farmId: farm.id, pondId, lineUserId: WORKER, status: 'ok', sampleDate: day,
     measuredAt: `${day}T01:00:00.000Z`, createdAt: `${day}T00:59:00.000Z`,
-    abw, perKg: Math.round(1000 / abw), cv: 0.1, n: 60, flags: [], imageFileId: `img-${id}`, netId: null, rim: null, ...over,
+    abw, perKg: Math.round(1000 / abw), cv: 0.1, n: 60, flags: [], imageFileId: `img-${id}`, netId: null, rim: null, ...UNMEASURED, ...over,
   }
 }
 
@@ -134,6 +135,14 @@ describe('GET /ponds/:id', () => {
     expect(d.note).toEqual({ by: 'น้องเอ', at: `${TODAY}T01:00:00.000Z`, text: 'กินดี' })
     expect(d).toMatchObject({ prevId: null, prevCode: null, nextId: 'p2', nextCode: 'A02' })
     expect(d.onTimeChance).toBeNull()
+  })
+
+  it('the latest scan’s grams per shrimp come from its stored lengths', async () => {
+    const repos = seeded()
+    const s3 = repos.state.scans.find((s) => s.id === 's3')!
+    Object.assign(s3, { refCm: 80, rimRadiusPx: 800, shrimpXy: [0.1, 0.2, 0.3, 0.4], lenPx: [200, 100] })
+    const res = await as(OWNER, repos).get('/ponds/p1')
+    expect(res.body.latestShrimpGrams).toEqual([8.07, Math.round(shrimpWeightG(5) * 100) / 100])
   })
 
   it('a pond with no stocking has no tonnes and growth days from 0', async () => {
