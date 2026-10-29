@@ -10,7 +10,10 @@ function fakeIdToken(aud: string, salt = ''): string {
 }
 
 // Restore KEY BY KEY: replacing process.env swaps the object identity.
-const KEYS = ['K_SERVICE', 'NODE_ENV', 'ALLOW_DEV_LIFF_AUTH', 'LIFF_DEV_USER_ID', 'LIFF_CHANNEL_ID', 'LIFF_CHANNEL_IDS'] as const
+const KEYS = [
+  'K_SERVICE', 'NODE_ENV', 'ALLOW_DEV_LIFF_AUTH', 'LIFF_DEV_USER_ID', 'LIFF_CHANNEL_ID', 'LIFF_CHANNEL_IDS',
+  'RAILWAY_PROJECT_ID', 'RAILWAY_ENVIRONMENT_ID', 'RAILWAY_SERVICE_ID',
+] as const
 const saved: Record<string, string | undefined> = {}
 for (const k of KEYS) saved[k] = process.env[k]
 const originalFetch = global.fetch
@@ -159,6 +162,42 @@ describe('verifyLiffIdToken middleware', () => {
     expect(next).toHaveBeenCalledOnce()
     expect(req.lineUserId).toBe('Ugood')
   })
+
+  it('carries the LINE display name from the ID token', async () => {
+    process.env.LIFF_CHANNEL_ID = 'login-channel'
+    delete process.env.ALLOW_DEV_LIFF_AUTH
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ sub: 'Unamed', name: 'พี่วิชัย' }) }) as never
+    const req = { headers: { authorization: `Bearer ${fakeIdToken('login-channel', 'named')}` } } as { headers: object; lineUserId?: string; lineDisplayName?: string }
+    await verifyLiffIdToken(req as never, fakeRes() as never, vi.fn())
+    expect(req.lineUserId).toBe('Unamed')
+    expect(req.lineDisplayName).toBe('พี่วิชัย')
+  })
+
+  it('carries displayName from /v2/profile on the access-token path, and from the cache', async () => {
+    process.env.LIFF_CHANNEL_ID = 'login-channel'
+    delete process.env.ALLOW_DEV_LIFF_AUTH
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/v2.1/verify?access_token=')) return Promise.resolve({ ok: true, json: async () => ({ client_id: 'login-channel' }) })
+      if (url.includes('/v2/profile')) return Promise.resolve({ ok: true, json: async () => ({ userId: 'Uprofile', displayName: 'น้องเอ' }) })
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    global.fetch = fetchMock as never
+    for (let i = 0; i < 2; i++) {
+      const req = { headers: { authorization: 'Bearer opaque-named-token' } } as { headers: object; lineDisplayName?: string }
+      await verifyLiffIdToken(req as never, fakeRes() as never, vi.fn())
+      expect(req.lineDisplayName).toBe('น้องเอ')
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves the display name unset when LINE gives none', async () => {
+    process.env.LIFF_CHANNEL_ID = 'login-channel'
+    delete process.env.ALLOW_DEV_LIFF_AUTH
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ sub: 'Unoname', name: '  ' }) }) as never
+    const req = { headers: { authorization: `Bearer ${fakeIdToken('login-channel', 'noname')}` } } as { headers: object; lineDisplayName?: string }
+    await verifyLiffIdToken(req as never, fakeRes() as never, vi.fn())
+    expect(req.lineDisplayName).toBeUndefined()
+  })
 })
 
 /**
@@ -177,6 +216,9 @@ describe('devAuthBypass: unreachable on a deployed host', () => {
 
   beforeEach(() => {
     delete process.env.K_SERVICE
+    delete process.env.RAILWAY_PROJECT_ID
+    delete process.env.RAILWAY_ENVIRONMENT_ID
+    delete process.env.RAILWAY_SERVICE_ID
     delete process.env.NODE_ENV
     delete process.env.LIFF_CHANNEL_ID
     delete process.env.LIFF_CHANNEL_IDS
@@ -198,6 +240,17 @@ describe('devAuthBypass: unreachable on a deployed host', () => {
   it('REFUSES on any Cloud Run revision even with NODE_ENV unset', async () => {
     process.env.K_SERVICE = 'aquawise-shrimpscan-line-bot'
     expect(await attribute()).toBeUndefined()
+  })
+
+  it.each(['RAILWAY_PROJECT_ID', 'RAILWAY_ENVIRONMENT_ID', 'RAILWAY_SERVICE_ID'])('REFUSES on Railway (%s set), where K_SERVICE never is', async (key) => {
+    process.env.NODE_ENV = 'staging'
+    process.env[key] = 'railway-id'
+    expect(await attribute()).toBeUndefined()
+  })
+
+  it('boot assertion throws on Railway when the dev vars are set', () => {
+    process.env.RAILWAY_SERVICE_ID = 'railway-id'
+    expect(() => assertNoDevAuthInDeployedEnv()).toThrow(/REFUSING TO START/)
   })
 
   it('REFUSES with NODE_ENV=production locally', async () => {

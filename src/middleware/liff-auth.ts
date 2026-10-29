@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express'
 import crypto from 'node:crypto'
+import { deployedHost } from '../lib/deployed.js'
 import { logger } from '../lib/logger.js'
 
 /**
@@ -7,16 +8,28 @@ import { logger } from '../lib/logger.js'
  * without its platform-access gate.
  *
  * The verified LINE user id lands in `req.lineUserId`. It is the ONLY identity
- * the server trusts: a request body never carries a user id.
+ * the server trusts: a request body never carries a user id. The LINE display
+ * name rides along in `req.lineDisplayName` (a name to show, never a key).
  */
 
 // Extend Express Request to carry the verified LINE user ID
 // eslint-disable-next-line @typescript-eslint/no-namespace
-declare global { namespace Express { interface Request { lineUserId?: string } } }
+declare global { namespace Express { interface Request { lineUserId?: string; lineDisplayName?: string } } }
+
+/** Who LINE says signed in: the user id, and the display name when LINE gave one. */
+export interface LiffIdentity {
+  userId: string
+  name?: string
+}
+
+/** A display name worth keeping: trimmed, never blank. */
+function nameOf(raw: unknown): string | undefined {
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined
+}
 
 // 5-minute cache keyed by SHA-256 of the token (never stores the raw token).
 const CACHE_TTL_MS = 5 * 60 * 1000
-const verifyCache = new Map<string, { userId: string; expiresAt: number }>()
+const verifyCache = new Map<string, LiffIdentity & { expiresAt: number }>()
 
 function tokenHash(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex')
@@ -63,7 +76,7 @@ function decodeJwtAud(token: string): string | undefined {
  */
 const LINE_VERIFY_TIMEOUT_MS = 8_000
 
-async function verifyIdToken(token: string, liffChannelId: string): Promise<string> {
+async function verifyIdToken(token: string, liffChannelId: string): Promise<LiffIdentity> {
   const params = new URLSearchParams({ id_token: token, client_id: liffChannelId })
   const res = await fetch('https://api.line.me/oauth2/v2.1/verify', {
     method: 'POST',
@@ -72,9 +85,10 @@ async function verifyIdToken(token: string, liffChannelId: string): Promise<stri
     signal: AbortSignal.timeout(LINE_VERIFY_TIMEOUT_MS),
   })
   if (!res.ok) throw new Error(`LINE id-token verify failed: ${res.status}`)
-  const payload = (await res.json()) as { sub?: string; error?: string }
+  // `name` is in the payload when the LIFF has the profile scope.
+  const payload = (await res.json()) as { sub?: string; name?: string; error?: string }
   if (payload.error || !payload.sub) throw new Error(payload.error || 'Missing sub in id-token payload')
-  return payload.sub
+  return { userId: payload.sub, name: nameOf(payload.name) }
 }
 
 /**
@@ -82,7 +96,7 @@ async function verifyIdToken(token: string, liffChannelId: string): Promise<stri
  * channels, then `/v2/profile` gives the user id. Works even when the LIFF app
  * lacks the `openid` scope.
  */
-async function verifyAccessToken(token: string, allowList: string[]): Promise<string> {
+async function verifyAccessToken(token: string, allowList: string[]): Promise<LiffIdentity> {
   const verifyRes = await fetch(`https://api.line.me/oauth2/v2.1/verify?access_token=${encodeURIComponent(token)}`, {
     signal: AbortSignal.timeout(LINE_VERIFY_TIMEOUT_MS),
   })
@@ -98,12 +112,12 @@ async function verifyAccessToken(token: string, allowList: string[]): Promise<st
     signal: AbortSignal.timeout(LINE_VERIFY_TIMEOUT_MS),
   })
   if (!profileRes.ok) throw new Error(`LINE profile fetch failed: ${profileRes.status}`)
-  const profile = (await profileRes.json()) as { userId?: string }
+  const profile = (await profileRes.json()) as { userId?: string; displayName?: string }
   if (!profile.userId) throw new Error('Missing userId in profile response')
-  return profile.userId
+  return { userId: profile.userId, name: nameOf(profile.displayName) }
 }
 
-async function verifyWithLine(token: string): Promise<string> {
+async function verifyWithLine(token: string): Promise<LiffIdentity> {
   const allowList = liffChannelAllowList()
   if (allowList.length === 0) throw new Error('LIFF_CHANNEL_IDS/LIFF_CHANNEL_ID env var not configured')
 
@@ -123,32 +137,38 @@ async function verifyWithLine(token: string): Promise<string> {
 
 /** Verify a LIFF token. The raw token is never logged or kept; the cache is
  * keyed by its SHA-256 digest. */
-export async function verifyLiffToken(token: string): Promise<string> {
+export async function verifyLiffIdentity(token: string): Promise<LiffIdentity> {
   const key = tokenHash(token)
   pruneCacheEntry(key)
   const cached = verifyCache.get(key)
-  if (cached && cached.expiresAt > Date.now()) return cached.userId
+  if (cached && cached.expiresAt > Date.now()) return { userId: cached.userId, name: cached.name }
 
-  const userId = await verifyWithLine(token)
-  verifyCache.set(key, { userId, expiresAt: Date.now() + CACHE_TTL_MS })
-  return userId
+  const who = await verifyWithLine(token)
+  verifyCache.set(key, { ...who, expiresAt: Date.now() + CACHE_TTL_MS })
+  return who
+}
+
+/** The verified LINE user id alone. */
+export async function verifyLiffToken(token: string): Promise<string> {
+  return (await verifyLiffIdentity(token)).userId
 }
 
 /**
  * Dev-only auth bypass for the local LIFF harness. Kept exactly as line-bot
  * has it.
  *
- * Unreachable unless ALL of these hold: `K_SERVICE` is absent (not on Cloud
- * Run), `NODE_ENV !== 'production'`, `ALLOW_DEV_LIFF_AUTH === 'true'` and
- * `LIFF_DEV_USER_ID` is set. `K_SERVICE` is the load-bearing term:
- * `NODE_ENV !== 'production'` is TRUE on staging, which is public, so
- * NODE_ENV alone is not an "am I deployed" test.
+ * Unreachable unless ALL of these hold: not on a deployed host (`deployedHost()`:
+ * Cloud Run's `K_SERVICE`, or Railway's `RAILWAY_*` ids), `NODE_ENV !==
+ * 'production'`, `ALLOW_DEV_LIFF_AUTH === 'true'` and `LIFF_DEV_USER_ID` is
+ * set. The host test is the load-bearing term: `NODE_ENV !== 'production'` is
+ * TRUE on staging, which is public (and on Railway it reads the PROD
+ * database), so NODE_ENV alone is not an "am I deployed" test.
  *
  * When active, `Authorization: Bearer dev-liff` (the sentinel the local LIFF
  * build sends from `VITE_DEV_LIFF_TOKEN`) is attributed to `LIFF_DEV_USER_ID`.
  */
 function devAuthBypass(req: Request): string | null {
-  if (process.env['K_SERVICE']) return null
+  if (deployedHost()) return null
   if (process.env['NODE_ENV'] === 'production') return null
   // Opt-in by its own name, so no other variable can turn auth off by accident.
   if (process.env['ALLOW_DEV_LIFF_AUTH'] !== 'true') return null
@@ -164,12 +184,13 @@ function devAuthBypass(req: Request): string | null {
  * deploy time instead of sitting in the environment unexplained.
  */
 export function assertNoDevAuthInDeployedEnv(): void {
-  if (!process.env['K_SERVICE']) return
+  const host = deployedHost()
+  if (!host) return
   if (!process.env['LIFF_DEV_USER_ID'] && process.env['ALLOW_DEV_LIFF_AUTH'] !== 'true') return
   throw new Error(
     '[liff-auth] REFUSING TO START: LIFF_DEV_USER_ID / ALLOW_DEV_LIFF_AUTH are set on a ' +
-      `deployed Cloud Run revision (K_SERVICE=${process.env['K_SERVICE']}). The dev auth ` +
-      'bypass is unreachable there by design; remove the variables with --remove-env-vars.',
+      `deployed host (${host}). The dev auth bypass is unreachable there by design; ` +
+      'remove the two variables from the service.',
   )
 }
 
@@ -202,7 +223,9 @@ export async function verifyLiffIdToken(req: Request, res: Response, next: NextF
   }
 
   try {
-    req.lineUserId = await verifyLiffToken(authHeader.slice(7))
+    const who = await verifyLiffIdentity(authHeader.slice(7))
+    req.lineUserId = who.userId
+    req.lineDisplayName = who.name
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'verify_failed'
     logger.warn('[liff-auth] verify failed:', reason)
