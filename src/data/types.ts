@@ -73,6 +73,17 @@ export interface ScanRow {
   imageFileId: string | null
   /** The ยอ the photo was measured with. */
   netId: string | null
+  /** `rim_ellipse` `[cx/W, cy/H, a/W, b/W, theta]`: น้ำ's guess until measured, then the ring it was measured on. */
+  rim: number[] | null
+}
+
+export interface ScanCreateInput {
+  farmId: string
+  pondId: string
+  lineUserId: string
+  /** `photo_sha256`: one scan per photo per farm (`sizing_measurements_farm_sha256`). */
+  sha256: string
+  flags: string[]
 }
 
 /** A pond's open cycle (state setup, preparing or active). */
@@ -146,6 +157,15 @@ export interface ScansRepo {
   savedOfFarm(farmId: string, sinceDay: string): Promise<ScanRow[]>
   /** Every saved scan of the pond, newest first. */
   savedOfPond(pondId: string): Promise<ScanRow[]>
+  /** Null for an id that is not a scan (or not a uuid). */
+  byId(id: string): Promise<ScanRow | null>
+  bySha(farmId: string, sha256: string): Promise<ScanRow | null>
+  /** A new scan, `status 'queued'`; `duplicate` when the farm has this photo already. */
+  create(input: ScanCreateInput): Promise<ScanRow | 'duplicate'>
+  linkImage(id: string, imageFileId: string): Promise<void>
+  setRim(id: string, ring: number[]): Promise<void>
+  /** Undoes an upload that did not finish. */
+  remove(id: string): Promise<void>
 }
 
 export interface CyclesRepo {
@@ -156,9 +176,26 @@ export interface CyclesRepo {
   saveStocking(input: { farmId: string; pondId: string; farmKey: string; stocking: Stocking }): Promise<void>
 }
 
+export interface PhotoFileInput {
+  farmId: string
+  lineUserId: string
+  /** The Storage path, `shrimp-scan/<farmId>/<scanId>.<ext>`. */
+  ref: string
+  mime: string
+  bytes: number
+  pondId: string
+}
+
 export interface PhotosRepo {
   /** Signed URLs (1 hour) by `record_image_files.id`; an id that cannot be signed is left out. */
   urls(imageFileIds: string[]): Promise<Record<string, string>>
+  /** Puts the photo in the private bucket; throws when it could not. */
+  put(path: string, bytes: Buffer, mime: string): Promise<void>
+  /** Best effort: never throws. */
+  removeObject(path: string): Promise<void>
+  /** The `record_image_files` row (`backend 'supabase'`, `kind 'shrimp_scan'`); its id. */
+  addFile(input: PhotoFileInput): Promise<string>
+  removeFile(id: string): Promise<void>
 }
 
 export interface PeopleRepo {

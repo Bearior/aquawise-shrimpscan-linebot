@@ -33,5 +33,27 @@ export function supabasePhotos(db: SupabaseClient): PhotosRepo {
       }
       return out
     },
+    async put(path, bytes, mime) {
+      const { error } = await db.storage.from(PHOTO_BUCKET).upload(path, bytes, { contentType: mime, upsert: false })
+      if (error) throw dbFail('record-images upload', error)
+    },
+    async removeObject(path) {
+      const { error } = await db.storage.from(PHOTO_BUCKET).remove([path])
+      if (error) logger.warn('[db] could not remove an unfinished upload', { error: error.message })
+    },
+    async addFile({ farmId, lineUserId, ref, mime, bytes, pondId }) {
+      const { data, error } = await db
+        .from('record_image_files')
+        // inbox false: nothing files a scan photo (the inbox is the Drive sweep's queue).
+        .insert({ farm_id: farmId, line_user_id: lineUserId, backend: 'supabase', ref, mime, bytes, kind: 'shrimp_scan', pond_ids: [pondId], inbox: false })
+        .select('id')
+        .single()
+      if (error) throw dbFail('record_image_files insert', error)
+      return (data as { id: string }).id
+    },
+    async removeFile(id) {
+      const { error } = await db.from('record_image_files').delete().eq('id', id)
+      if (error) throw dbFail('record_image_files delete', error)
+    },
   }
 }

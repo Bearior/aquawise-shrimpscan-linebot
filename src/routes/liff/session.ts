@@ -15,6 +15,7 @@ import { bangkokDay, scanDailyLimit, TARGET_CHOICES, zoneOf } from '../../domain
 import { effective } from '../../domain/permissions.js'
 import { envName } from '../liff-me.js'
 import { handle, type GetRepos } from './handle.js'
+import { oneAtATime } from './lock.js'
 
 const NAME_MAX = 80
 const PONDS_MAX = 300
@@ -82,19 +83,6 @@ export function parseStart(body: unknown): { name: string; ponds: string[] } {
  * waits for the first, then finds the farm and makes nothing. One process
  * only (Railway runs one instance).
  */
-const starting = new Map<string, Promise<unknown>>()
-
-async function oneAtATime<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const before = starting.get(key) ?? Promise.resolve()
-  const run = before.catch(() => undefined).then(fn)
-  starting.set(key, run)
-  try {
-    return await run
-  } finally {
-    if (starting.get(key) === run) starting.delete(key)
-  }
-}
-
 export function sessionRouter(getRepos: GetRepos): Router {
   const r = Router()
 
@@ -107,7 +95,7 @@ export function sessionRouter(getRepos: GetRepos): Router {
       if (ctx.farm) return sessionFor(repos, ctx, req.lineDisplayName)
       const body = parseStart(req.body)
       const lineUserId = req.lineUserId!
-      const done = await oneAtATime(lineUserId, async () => {
+      const done = await oneAtATime(`start:${lineUserId}`, async () => {
         // Read again inside the lock: a start that finished meanwhile made the farm.
         const now = await resolveContext(repos, lineUserId)
         if (!now.farm && !now.blocked) {

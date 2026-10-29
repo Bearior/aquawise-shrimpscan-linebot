@@ -55,7 +55,7 @@ function scan(id: string, pondId: string, day: string, abw: number, over: Partia
   return {
     id, farmId: farm.id, pondId, lineUserId: WORKER, status: 'ok', sampleDate: day,
     measuredAt: `${day}T01:00:00.000Z`, createdAt: `${day}T00:59:00.000Z`,
-    abw, perKg: Math.round(1000 / abw), cv: 0.1, n: 60, flags: [], imageFileId: `img-${id}`, netId: null, ...over,
+    abw, perKg: Math.round(1000 / abw), cv: 0.1, n: 60, flags: [], imageFileId: `img-${id}`, netId: null, rim: null, ...over,
   }
 }
 

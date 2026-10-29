@@ -10,6 +10,7 @@ import { logger } from './lib/logger.js'
 import { handleWebhookEvents } from './handlers/webhook.js'
 import { verifyLiffIdToken } from './middleware/liff-auth.js'
 import type { Repos } from './data/types.js'
+import type { SizingClient } from './lib/sizing.js'
 import { envName, liffMeRouter } from './routes/liff-me.js'
 import { liffRouter } from './routes/liff/index.js'
 
@@ -22,6 +23,8 @@ export interface AppOptions {
   onEvents?: (events: webhook.Event[]) => Promise<void>
   /** Replaces the database behind /api/liff (tests). */
   repos?: Repos
+  /** Replaces the sizing service behind /api/liff (tests). */
+  sizing?: SizingClient
 }
 
 export function createApp(opts: AppOptions = {}): express.Express {
@@ -119,7 +122,7 @@ export function createApp(opts: AppOptions = {}): express.Express {
   })
 
   app.use('/api/liff', liffMeRouter)
-  app.use('/api/liff', liffRouter({ repos: opts.repos }))
+  app.use('/api/liff', liffRouter({ repos: opts.repos, sizing: opts.sizing }))
   // Every other /api/liff route the LIFF screens call is not built on the
   // server yet (the mock API in liff-app/dev-mock serves them). Auth still
   // runs first, so an unconfigured or unauthenticated call fails the same way

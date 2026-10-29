@@ -8,10 +8,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseRepos } from '../../data/supabase/index.js'
 import type { Repos } from '../../data/types.js'
 import { getDb } from '../../lib/db.js'
+import { sizingService, type SizingClient } from '../../lib/sizing.js'
 import { verifyLiffIdToken } from '../../middleware/liff-auth.js'
 import { bodyErrors } from './errors.js'
 import type { GetRepos } from './handle.js'
 import { netsRouter } from './nets.js'
+import { scansRouter } from './scans.js'
 import { pondsRouter } from './ponds.js'
 import { sessionRouter } from './session.js'
 
@@ -27,6 +29,8 @@ function supabaseRepos(): Repos | null {
 export interface LiffRouterOptions {
   /** Replaces the database (tests). */
   repos?: Repos
+  /** Replaces the sizing service (tests). */
+  sizing?: SizingClient
 }
 
 export function liffRouter(opts: LiffRouterOptions = {}): Router {
@@ -37,5 +41,6 @@ export function liffRouter(opts: LiffRouterOptions = {}): Router {
   r.use(sessionRouter(getRepos))
   r.use(pondsRouter(getRepos))
   r.use(netsRouter(getRepos))
+  r.use(scansRouter(getRepos, opts.sizing ?? sizingService))
   return r
 }

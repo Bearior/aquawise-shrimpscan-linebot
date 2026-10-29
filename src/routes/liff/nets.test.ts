@@ -67,7 +67,7 @@ function measuredWith(netId: string): ScanRow {
   return {
     id: 's1', farmId: farm.id, pondId: 'p1', lineUserId: WORKER, status: 'ok', sampleDate: '2026-10-25',
     measuredAt: '2026-10-25T01:00:00Z', createdAt: '2026-10-25T00:59:00Z', abw: 12, perKg: 83, cv: 0.1, n: 60,
-    flags: [], imageFileId: 'img-1', netId,
+    flags: [], imageFileId: 'img-1', netId, rim: null,
   }
 }
 

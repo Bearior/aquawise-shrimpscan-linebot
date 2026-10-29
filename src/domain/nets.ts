@@ -9,6 +9,7 @@ import { TH } from '../copy/th.js'
 import type { MemberRow, NetRow, PondRow } from '../data/types.js'
 import { bangkokDay } from './farm.js'
 import { fmtDay, pondRange } from './format.js'
+import { personName } from './names.js'
 
 /** `farm_nets.name`. One live ยอ per name (`farm_nets_one_live_name`), so one per size. */
 export function netName(cm: number): string {
@@ -24,8 +25,7 @@ export function pondNet(nets: NetRow[], pond: Pick<PondRow, 'netId'>): NetRow | 
 export function netView(net: NetRow, nets: NetRow[], ponds: PondRow[], members: MemberRow[]): Net {
   const isFarmDefault = nets[0]?.id === net.id
   const uses = ponds.filter((p) => pondNet(nets, p)?.id === net.id)
-  const who = members.find((m) => m.lineUserId === net.createdBy)
-  const name = who?.name || (who?.role === 'owner' ? TH.ownerFallback : TH.someone)
+  const name = personName(members, net.createdBy)
   const addedOn = bangkokDay(new Date(net.createdAt))
   return {
     id: net.id,

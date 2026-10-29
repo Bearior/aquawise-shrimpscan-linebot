@@ -30,12 +30,34 @@ export interface MemoryCycle extends CycleRow {
   open: boolean
 }
 
+/** A `sizing_measurements` row as the memory store keeps it. */
+export interface MemoryScan extends ScanRow {
+  sha256?: string
+}
+
+/** A `record_image_files` row. */
+export interface MemoryImageFile {
+  id: string
+  farmId: string
+  lineUserId: string
+  ref: string
+  kind: string
+  mime: string
+  bytes: number
+  pondIds: string[]
+}
+
 export interface MemoryState {
   farms: FarmRow[]
   members: MemberRow[]
   ponds: PondRow[]
   nets: NetRow[]
-  scans: ScanRow[]
+  scans: MemoryScan[]
+  /** Storage objects by path. */
+  objects: Record<string, { mime: string; bytes: number }>
+  imageFiles: MemoryImageFile[]
+  /** Storage refuses every put (the bucket is down). */
+  failPhotoPut: boolean
   cycles: MemoryCycle[]
   lineUsers: MemoryLineUser[]
   /** `shrimp_scan_farm_settings.target_per_kg` by farm id. */
@@ -56,7 +78,10 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
     members: [...(seed.members ?? [])],
     ponds: (seed.ponds ?? []).map((p) => ({ ...p })),
     nets: (seed.nets ?? []).map((n) => ({ ...n })),
-    scans: [...(seed.scans ?? [])],
+    scans: (seed.scans ?? []).map((s) => ({ ...s })),
+    objects: { ...seed.objects },
+    imageFiles: (seed.imageFiles ?? []).map((f) => ({ ...f })),
+    failPhotoPut: seed.failPhotoPut ?? false,
     cycles: (seed.cycles ?? []).map((c) => ({ ...c })),
     lineUsers: (seed.lineUsers ?? []).map((u) => ({ ...u })),
     targets: { ...seed.targets },
@@ -155,6 +180,36 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
       async savedOfPond(pondId) {
         return state.scans.filter((s) => s.pondId === pondId && s.sampleDate !== null).sort(newestFirst)
       },
+      async byId(id) {
+        const s = state.scans.find((x) => x.id === id)
+        return s ? { ...s } : null
+      },
+      async bySha(farmId, sha256) {
+        const s = state.scans.find((x) => x.farmId === farmId && x.sha256 === sha256)
+        return s ? { ...s } : null
+      },
+      async create({ farmId, pondId, lineUserId, sha256, flags }) {
+        await tick()
+        if (state.scans.some((s) => s.farmId === farmId && s.sha256 === sha256)) return 'duplicate'
+        const row: MemoryScan = {
+          id: `scan-${++seq}`, farmId, pondId, lineUserId, status: 'queued', sampleDate: null, measuredAt: null,
+          createdAt: new Date().toISOString(), abw: null, perKg: null, cv: null, n: null, flags: [...flags],
+          imageFileId: null, netId: null, rim: null, sha256,
+        }
+        state.scans.push(row)
+        return { ...row }
+      },
+      async linkImage(id, imageFileId) {
+        const s = state.scans.find((x) => x.id === id)
+        if (s) s.imageFileId = imageFileId
+      },
+      async setRim(id, ring) {
+        const s = state.scans.find((x) => x.id === id)
+        if (s) s.rim = [...ring]
+      },
+      async remove(id) {
+        state.scans = state.scans.filter((s) => s.id !== id)
+      },
     },
     cycles: {
       async openOfFarm(farmId) {
@@ -173,6 +228,23 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
     photos: {
       async urls(ids) {
         return Object.fromEntries(ids.map((id) => [id, `https://photos.test/${id}`]))
+      },
+      async put(path, bytes, mime) {
+        await tick()
+        if (state.failPhotoPut) throw new Error('storage put failed')
+        state.objects[path] = { mime, bytes: bytes.length }
+      },
+      async removeObject(path) {
+        delete state.objects[path]
+      },
+      async addFile({ farmId, lineUserId, ref, mime, bytes, pondId }) {
+        await tick()
+        const id = `file-${++seq}`
+        state.imageFiles.push({ id, farmId, lineUserId, ref, kind: 'shrimp_scan', mime, bytes, pondIds: [pondId] })
+        return id
+      },
+      async removeFile(id) {
+        state.imageFiles = state.imageFiles.filter((f) => f.id !== id)
       },
     },
     people: {
