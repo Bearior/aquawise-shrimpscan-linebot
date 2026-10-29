@@ -7,6 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { OA_CREATED_VIA, type PeopleRepo } from '../types.js'
 import { dbFail } from './errors.js'
+import { stampScanOnly } from './farms.js'
 
 export function supabasePeople(db: SupabaseClient): PeopleRepo {
   return {
@@ -37,5 +38,7 @@ export function supabasePeople(db: SupabaseClient): PeopleRepo {
       if (u.error) throw dbFail('line_users onboarding', u.error)
       return (u.data as { onboarding_complete?: boolean } | null)?.onboarding_complete === true
     },
+
+    stampScanOnly: (lineUserId, name) => stampScanOnly(db, lineUserId, name),
   }
 }

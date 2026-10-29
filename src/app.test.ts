@@ -139,9 +139,9 @@ describe('/api/liff', () => {
   it('a LIFF route that is not built yet answers 501 after auth', async () => {
     process.env.ALLOW_DEV_LIFF_AUTH = 'true'
     process.env.LIFF_DEV_USER_ID = 'Udev0000000000000000000000000000'
-    const ok = await request(createApp()).get('/api/liff/overview').set('authorization', 'Bearer dev-liff')
+    const ok = await request(createApp()).get('/api/liff/inbox').set('authorization', 'Bearer dev-liff')
     expect(ok.status).toBe(501)
-    const noAuth = await request(createApp()).get('/api/liff/overview')
+    const noAuth = await request(createApp()).get('/api/liff/inbox')
     expect(noAuth.status).toBe(503)
   })
 })

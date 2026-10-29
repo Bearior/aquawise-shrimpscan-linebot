@@ -139,12 +139,12 @@ export function toScanResult(row: ScanRow, net: { id: string; cm: number }, W: n
 
 /** The photo's sender measures and saves it; an owner or manager may for anyone (measureInbox). */
 export function mayMeasure(me: MemberRow, row: Pick<ScanRow, 'lineUserId'>): boolean {
-  return row.lineUserId === me.lineUserId || effective(me.role).measureInbox
+  return row.lineUserId === me.lineUserId || (me.perms ?? effective(me.role)).measureInbox
 }
 
 /** A result's rim is fixed by its measurer (the sender) or, with editOthers, by an owner or manager; never by a worker. */
 export function mayFix(me: MemberRow, row: Pick<ScanRow, 'lineUserId'>): boolean {
-  return me.role !== 'worker' && (row.lineUserId === me.lineUserId || effective(me.role).editOthers)
+  return me.role !== 'worker' && (row.lineUserId === me.lineUserId || (me.perms ?? effective(me.role)).editOthers)
 }
 
 /** A worker sees no number: their scan carries `found` and never `result`. */

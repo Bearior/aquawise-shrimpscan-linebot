@@ -3,6 +3,7 @@ import type { Repos } from '../types.js'
 import { supabaseCycles } from './cycles.js'
 import { supabaseFarms } from './farms.js'
 import { supabaseGrowth } from './growth.js'
+import { supabaseInvites } from './invites.js'
 import { supabaseMembers } from './members.js'
 import { supabaseNets } from './nets.js'
 import { supabasePeople } from './people.js'
@@ -10,6 +11,7 @@ import { supabasePhotos } from './photos.js'
 import { supabasePonds } from './ponds.js'
 import { supabaseQuota } from './quota.js'
 import { supabaseScans } from './scans.js'
+import { supabaseSettings } from './settings.js'
 
 export function createSupabaseRepos(db: SupabaseClient): Repos {
   return {
@@ -23,5 +25,7 @@ export function createSupabaseRepos(db: SupabaseClient): Repos {
     cycles: supabaseCycles(db),
     photos: supabasePhotos(db),
     growth: supabaseGrowth(db),
+    invites: supabaseInvites(db),
+    settings: supabaseSettings(db),
   }
 }

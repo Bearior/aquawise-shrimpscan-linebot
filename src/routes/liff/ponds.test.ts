@@ -124,9 +124,10 @@ describe('GET /ponds/:id', () => {
     const d = res.body
     expect(d.pond.code).toBe('A01')
     expect(d.growth).toEqual([
-      { day: 38, abw: 10, date: addDays(TODAY, -2) },
-      { day: 39, abw: 10.3, date: addDays(TODAY, -1) },
-      { day: 40, abw: 10.6, date: TODAY },
+      // sd is abw × CV (0.1 here), to one decimal.
+      { day: 38, abw: 10, date: addDays(TODAY, -2), sd: 1 },
+      { day: 39, abw: 10.3, date: addDays(TODAY, -1), sd: 1 },
+      { day: 40, abw: 10.6, date: TODAY, sd: 1.1 },
     ])
     expect(d.latest).toMatchObject({ scanId: 's3', date: TODAY, abw: 10.6, perKg: 94, photoUrl: 'https://photos.test/img-s3', photoBy: 'น้องเอ', measuredBy: 'น้องเอ', fixed: null, canFix: true })
     expect(d.latestShrimpGrams).toEqual([])
@@ -149,7 +150,7 @@ describe('GET /ponds/:id', () => {
     const res = await as(OWNER, seeded({ cycles: [] })).get('/ponds/p2')
     expect(res.body.stocking).toEqual({ stockedOn: null, count: null, survival: null })
     expect(res.body.tonnesNow).toBeNull()
-    expect(res.body.growth).toEqual([{ day: 0, abw: 12, date: addDays(TODAY, -1) }])
+    expect(res.body.growth).toEqual([{ day: 0, abw: 12, date: addDays(TODAY, -1), sd: 1.2 }])
     expect(res.body).toMatchObject({ prevCode: 'A01', nextCode: 'B01' })
   })
 

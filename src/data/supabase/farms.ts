@@ -43,8 +43,8 @@ function toFarm(r: Row): FarmRow {
   return { id: r.id, name: r.name ?? '', createdBy: r.created_by, createdVia: r.created_via, accessLevel: r.access_level }
 }
 
-/** The owner's line_users row: made when missing, stamped scan_only either way. */
-async function stampOwner(db: SupabaseClient, ownerId: string, ownerName: string | null): Promise<void> {
+/** The person's line_users row: made when missing, stamped scan_only either way. */
+export async function stampScanOnly(db: SupabaseClient, ownerId: string, ownerName: string | null): Promise<void> {
   const found = await db.from('line_users').select('id, dsr_erased_at').eq('id', ownerId).maybeSingle()
   if (found.error) throw dbFail('line_users read', found.error)
   const row = found.data as { id: string; dsr_erased_at: string | null } | null
@@ -85,7 +85,7 @@ export function supabaseFarms(db: SupabaseClient): FarmsRepo {
     },
 
     async createOaFarm({ ownerId, ownerName, name, pondCodes }) {
-      await stampOwner(db, ownerId, ownerName)
+      await stampScanOnly(db, ownerId, ownerName)
 
       // farm_code is UNIQUE: retry a collision, never anything else.
       let farm: FarmRow | null = null
@@ -152,6 +152,19 @@ export function supabaseFarms(db: SupabaseClient): FarmsRepo {
       const { data, error } = await db.from('shrimp_scan_farm_settings').select('target_per_kg').eq('farm_id', farmId).maybeSingle()
       if (error) throw dbFail('shrimp_scan_farm_settings read', error)
       return (data as { target_per_kg: number | null } | null)?.target_per_kg ?? DEFAULT_TARGET_PER_KG
+    },
+
+    async oaFarmOfKey(farmKey) {
+      const { data, error } = await db
+        .from('farms')
+        .select(FARM_COLS)
+        .eq('created_by', farmKey)
+        .eq('created_via', OA_CREATED_VIA)
+        .order('created_at', { ascending: true })
+        .limit(1)
+      if (error) throw dbFail('farms.oaFarmOfKey', error)
+      const row = (data as Row[] | null)?.[0]
+      return row ? toFarm(row) : null
     },
 
     async setTarget(farmId, targetPerKg) {

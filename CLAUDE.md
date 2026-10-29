@@ -120,12 +120,14 @@ out of builds. A new host must be added to `deployedAs()` first.
   move that makes the person wait; nothing rests on a transform; reduced
   motion cuts every move.
 - `src/api/types.ts` is **the contract** for every `/api/liff/*` call, and
-  `src/api/client.ts` is the only place a path is spelled. Part 1 of the
-  server routes is built (`src/routes/liff/`, see "The database" below):
-  session, start, farm, ponds, ยอ, and the whole scan (upload, measure, ยอ
-  change, save, fix). Every other `/api/liff/*` route (today, team, people,
-  invites, permissions, overview, settings, print, inbox) still answers 501
-  `not_built_yet` (after auth).
+  `src/api/client.ts` is the only place a path is spelled. The server routes
+  are built (`src/routes/liff/`, see "The database" below). Part 1: session,
+  start, farm, ponds, ยอ, and the whole scan (upload, measure, ยอ change,
+  save, fix). Part 2: overview with เรื่องน่าจับตา and รับทราบ, today, team
+  today, members, a person's ponds and permissions, invites (make, cancel,
+  preview, accept), settings, the farm and pond print sheets. Still 501
+  `not_built_yet` (after auth): the inbox and ask-again (out of the nav) and
+  `POST /print/send` (pictures of a sheet into the chat need a renderer).
 - **`pnpm mock`** (or `pnpm liff:mock` from the root) runs the whole app with
   no backend on http://localhost:5199/liff/. `dev-mock/mock-api.ts` is a Vite
   plugin; `dev-mock/store.ts` is an in-memory ฟาร์มสายน้ำ (60 ponds, the
@@ -179,7 +181,7 @@ applied to an environment before turning on anything that needs it.
   403 `use_nong_nam` on every farm route and nothing is written for them.
 - The server reads `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
   `SIZING_SERVICE_URL`, `SIZING_SERVICE_SECRET` and `SCAN_DAILY_LIMIT`
-  (default 20). Without the first two every part-1 route answers 503
+  (default 20). Without the first two every database route answers 503
   `db_not_configured`; without the sizing pair, measure answers 503
   `measure_not_configured`.
 - Data: the repos in `src/data/supabase/` (one per table), with
@@ -189,6 +191,16 @@ applied to an environment before turning on anything that needs it.
   the web scan's (`sizing_consume_quota` / `sizing_refund_quota`). A save
   writes the pond-day's `growth_samples` row through
   `write_photo_growth_sample`, the RPC น้องน้ำ's own scan uses.
+- Invites are `farm_invites` rows beside น้องน้ำ's, keyed by the owner's LINE
+  id; the OA's link carries the six-character code, and the OA shows or takes
+  only an invite whose key holds a farm it made. Accepting stamps the person's
+  `line_users` row scan_only (like the owner's) and upserts the membership the
+  way line-bot's accept does. Removing a person sets `status 'removed'`.
+- `shrimp_scan_farm_settings.notify` (jsonb) holds the reminder switches at
+  the top level and, until they get columns of their own, the owner's
+  per-person switches (`perms`, by `farm_members.id`) and the farm's รับทราบ
+  (`acks`). `src/domain/settings.ts` reads it leniently; every write is a
+  read-modify-write under `oneAtATime('settings:<farmId>')`.
 - On prod: migration 211 (`shrimp_scan_farm_settings`) and line-bot's 210
   (`shrimp_len_px`, applied 2026-10-29), so a re-read keeps the grams per
   shrimp. A database without 210 still works: the column is dropped from

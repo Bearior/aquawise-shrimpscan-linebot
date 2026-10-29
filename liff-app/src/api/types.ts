@@ -3,8 +3,8 @@
  *
  * Dependency free on purpose. The backend-free mock (dev-mock/mock-api.ts)
  * imports this file by relative path and is type-checked against it, so when
- * the contract changes, the mock fails `tsc` instead of drifting. The real
- * server routes (not built yet) answer 501 until they implement these shapes.
+ * the contract changes, the mock fails `tsc` instead of drifting. A server
+ * route that is not built yet answers 501 not_built_yet.
  *
  * Conventions:
  * - Dates are ISO calendar days in Asia/Bangkok ('2026-10-20'); instants are

@@ -50,10 +50,12 @@ docker build -t shrimpscan-line-bot . && docker run -p 8080:8080 shrimpscan-line
 
 - Server: `/health`, the signed `/webhook` (follow → greeting, text → a
   placeholder with a button that opens the LIFF), `/api/liff-config`, `/liff`,
-  and behind LIFF auth `GET /api/liff/me` plus part 1 of the contract on the
-  shared Supabase database (session, start, farm, ponds, ยอ, and the scan:
-  upload, measure, ยอ change, save, fix). Every other `/api/liff/*` route
-  answers 501 `not_built_yet`. `pnpm db:smoke` checks the database read only.
+  and behind LIFF auth `GET /api/liff/me` plus the contract on the shared
+  Supabase database: session, start, farm, ponds, ยอ, the scan (upload,
+  measure, ยอ change, save, fix), overview and เรื่องน่าจับตา, today, team
+  today, people, permissions, invites, settings and the print sheets. The
+  inbox, ask-again and `POST /print/send` answer 501 `not_built_yet`.
+  `pnpm db:smoke` checks the database read only.
 - LIFF: every screen of the mock flow (owner, worker, onboarding, invites,
   permissions, ยอ sizes, rim fix, inbox, print sheets), against the contract in
   `liff-app/src/api/types.ts`, running on the mock API.
@@ -68,8 +70,8 @@ docker build -t shrimpscan-line-bot . && docker run -p 8080:8080 shrimpscan-line
 
 ## Next
 
-1. Backend part 2 (`liff-app/src/api/types.ts`): today, team, people,
-   invites, permissions, overview and เรื่องน่าจับตา, settings, print.
+1. Give the per-person switches and รับทราบ columns of their own (they ride
+   in `shrimp_scan_farm_settings.notify` today), with Bear's go for prod.
 2. Part 3: the rich menu (`setup:rich-menu`) and the วิธีใช้ and
    อากาศวันนี้ replies.
 3. The staging database again instead of prod (210 and 211 are on prod).

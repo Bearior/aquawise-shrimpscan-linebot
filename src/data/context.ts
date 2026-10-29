@@ -10,6 +10,7 @@
  * the scan_only stamp a new OA farm brings would lock their น้องน้ำ LIFF.
  */
 
+import { permsOf } from '../domain/settings.js'
 import { OA_CREATED_VIA, type FarmRow, type MemberRow, type Repos } from './types.js'
 
 /** An answer a route sends as `{ error: code }` with this status. */
@@ -36,7 +37,11 @@ export interface Ctx {
 export async function resolveContext(repos: Repos, lineUserId: string): Promise<Ctx> {
   const me = await repos.members.activeFor(lineUserId)
   const farm = me ? await repos.farms.byId(me.farmId) : null
-  if (me && farm) return { lineUserId, farm, me, blocked: farm.createdVia !== OA_CREATED_VIA }
+  if (me && farm) {
+    if (farm.createdVia !== OA_CREATED_VIA) return { lineUserId, farm, me, blocked: true }
+    const settings = await repos.settings.read(farm.id)
+    return { lineUserId, farm, me: { ...me, perms: permsOf(settings, me) }, blocked: false }
+  }
   return { lineUserId, farm: null, me: null, blocked: await repos.people.hasNongNamFootprint(lineUserId) }
 }
 

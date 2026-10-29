@@ -14,9 +14,13 @@ import { bodyErrors } from './errors.js'
 import type { GetRepos } from './handle.js'
 import { measureRouter } from './measure.js'
 import { netsRouter } from './nets.js'
+import { overviewRouter } from './overview.js'
+import { peopleRouter } from './people.js'
+import { printRouter } from './print.js'
 import { scansRouter } from './scans.js'
 import { pondsRouter } from './ponds.js'
 import { sessionRouter } from './session.js'
+import { settingsRouter } from './settings.js'
 
 let cached: { db: SupabaseClient; repos: Repos } | null = null
 
@@ -42,6 +46,10 @@ export function liffRouter(opts: LiffRouterOptions = {}): Router {
   r.use(sessionRouter(getRepos))
   r.use(pondsRouter(getRepos))
   r.use(netsRouter(getRepos))
+  r.use(overviewRouter(getRepos))
+  r.use(peopleRouter(getRepos))
+  r.use(settingsRouter(getRepos))
+  r.use(printRouter(getRepos))
   const sizing = opts.sizing ?? sizingService
   r.use(scansRouter(getRepos, sizing))
   r.use(measureRouter(getRepos, sizing))

@@ -5,7 +5,7 @@
  * route test). Routes only ever see `Repos`.
  */
 
-import type { Role, Stocking } from '../contract/types.js'
+import type { NotifySettings, Permissions, Role, Stocking } from '../contract/types.js'
 
 /** The mark a farm made by this OA carries (migration 211). */
 export const OA_CREATED_VIA = 'shrimp_scan_oa'
@@ -31,6 +31,10 @@ export interface MemberRow {
   /** The ponds this person looks after (an owner looks after every pond). */
   pondIds: string[]
   status: MemberStatus
+  /** `joined_at`; missing on a row the test did not date. */
+  joinedAt?: string | null
+  /** What the person may do, set by `resolveContext` from the role and the owner's switches. */
+  perms?: Permissions
 }
 
 export interface PondRow {
@@ -155,6 +159,8 @@ export interface FarmsRepo {
   /** จับขายที่ไซส์ (ตัว/กก.); the default when the farm never set one. */
   target(farmId: string): Promise<number>
   setTarget(farmId: string, targetPerKg: number): Promise<void>
+  /** The farm this OA made whose key (`created_by`) is this LINE id; null when there is none. */
+  oaFarmOfKey(farmKey: string): Promise<FarmRow | null>
 }
 
 export interface MembersRepo {
@@ -162,6 +168,95 @@ export interface MembersRepo {
   activeFor(lineUserId: string): Promise<MemberRow | null>
   /** Everyone active in the farm, oldest first. */
   ofFarm(farmId: string): Promise<MemberRow[]>
+  /** The farm's active member with this row id; null for anyone else. */
+  byId(farmId: string, id: string): Promise<MemberRow | null>
+  setRole(id: string, role: Exclude<Role, 'owner'>): Promise<void>
+  /** The ponds this person looks after (`pond_ids`, with `scope` to match). */
+  setPonds(id: string, pondIds: string[]): Promise<void>
+  /** `status 'removed'`: the row stays, so a new invite brings the person back. */
+  remove(id: string): Promise<void>
+  /** The membership an invite gives, upserted on the farm key and the person (a removed row comes back). */
+  join(input: JoinInput): Promise<void>
+}
+
+export interface JoinInput {
+  farmId: string
+  farmKey: string
+  lineUserId: string
+  role: Exclude<Role, 'owner'>
+  name: string | null
+  pondIds: string[]
+  inviteId: string
+}
+
+export type InviteStatus = 'pending' | 'claimed' | 'declined' | 'cancelled' | 'expired'
+
+/** A `farm_invites` row. It names the farm by its key, the owner's LINE id. */
+export interface InviteRow {
+  id: string
+  farmKey: string
+  /** Six characters, unique across every farm (`farm_invites_code_key`). */
+  code: string
+  role: Exclude<Role, 'owner'>
+  pondIds: string[]
+  status: InviteStatus
+  expiresAt: string
+  createdAt: string
+  /** Who issued it (migration 204). */
+  createdBy: string | null
+}
+
+export interface InviteCreateInput {
+  farmKey: string
+  createdBy: string
+  code: string
+  /** Never sent to anyone: the OA's link carries the code. The column is NOT NULL and unique. */
+  token: string
+  role: Exclude<Role, 'owner'>
+  pondIds: string[]
+  expiresAt: string
+}
+
+export interface InvitesRepo {
+  /** The farm's invites still pending, newest first (expired ones included: the route drops them). */
+  pendingOf(farmKey: string): Promise<InviteRow[]>
+  /** `code_taken` when another invite holds the code. */
+  create(input: InviteCreateInput): Promise<InviteRow | 'code_taken'>
+  byCode(code: string): Promise<InviteRow | null>
+  /** Pending to cancelled; false when the farm has no such pending invite. */
+  cancel(farmKey: string, code: string): Promise<boolean>
+  /** Pending to claimed by this person, in one write; false when it was not pending any more. */
+  claim(id: string, lineUserId: string): Promise<boolean>
+  /** Puts a claim back to pending, when the membership could not be written. */
+  unclaim(id: string): Promise<void>
+}
+
+/** A รับทราบ on a เรื่องน่าจับตา item: it holds while the item's signature is the same. */
+export interface StoredAck {
+  signature: string
+  by: string
+  /** HH:MM, Bangkok. */
+  at: string
+}
+
+/**
+ * What the OA keeps per farm in `shrimp_scan_farm_settings.notify` (jsonb).
+ * The reminder switches sit at the top level, as migration 211 says; the
+ * per-person switches and the farm's รับทราบ ride under `perms` and `acks`
+ * until a migration gives them columns of their own.
+ */
+export interface FarmSettings {
+  notify: NotifySettings
+  /** By `farm_members.id`: a person's switches once the owner changed any. */
+  perms: Record<string, Permissions>
+  acks: Record<string, StoredAck>
+}
+
+export interface SettingsRepo {
+  /** The farm's settings, with defaults for whatever was never saved. */
+  read(farmId: string): Promise<FarmSettings>
+  /** Writes them whole; the target size (`target_per_kg`) is kept. */
+  write(farmId: string, settings: FarmSettings): Promise<void>
 }
 
 export interface PondsRepo {
@@ -255,6 +350,12 @@ export interface PeopleRepo {
    * stamped scan_only: that stamp locks the น้องน้ำ LIFF.
    */
   hasNongNamFootprint(lineUserId: string): Promise<boolean>
+  /**
+   * The person's `line_users` row, made when missing and stamped scan_only,
+   * as the farm's owner's is (a membership references it). Throws
+   * `ApiError(403, 'not_allowed')` for an erased account.
+   */
+  stampScanOnly(lineUserId: string, name: string | null): Promise<void>
 }
 
 export interface QuotaRepo {
@@ -305,4 +406,6 @@ export interface Repos {
   cycles: CyclesRepo
   photos: PhotosRepo
   growth: GrowthRepo
+  invites: InvitesRepo
+  settings: SettingsRepo
 }

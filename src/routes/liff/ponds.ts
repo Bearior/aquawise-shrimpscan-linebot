@@ -63,7 +63,7 @@ function caretakerOf(members: MemberRow[], pondId: string): string | null {
   return (w ?? m)?.name || null
 }
 
-function nameOf(members: MemberRow[], lineUserId: string): string {
+export function nameOf(members: MemberRow[], lineUserId: string): string {
   return members.find((m) => m.lineUserId === lineUserId)?.name || TH.someone
 }
 
@@ -73,6 +73,27 @@ function samplesOf(scans: ScanRow[], stockedOn: string | null | undefined): { da
     .filter((s) => s.sampleDate !== null && s.abw !== null && (!stockedOn || s.sampleDate >= stockedOn))
     .map((s) => ({ date: s.sampleDate!, abw: s.abw! }))
     .reverse()
+}
+
+/** The pond's growth line: one point per saved day from stocking on, oldest first, with the spread (abw × CV) when known. */
+export function growthOf(scans: ScanRow[], stockedOn: string | null): GrowthPoint[] {
+  return scans
+    .filter((s) => s.sampleDate !== null && s.abw !== null && (!stockedOn || s.sampleDate >= stockedOn))
+    .reverse()
+    .map((s) => ({
+      day: stockedOn ? daysBetween(stockedOn, s.sampleDate!) : 0,
+      abw: s.abw!,
+      date: s.sampleDate!,
+      sd: s.cv !== null ? round1(s.abw! * s.cv) : null,
+    }))
+}
+
+/** Every pond of the farm as a tile, from the last LIST_DAYS of saved scans. */
+export async function farmTiles(repos: Repos, view: FarmView): Promise<PondTile[]> {
+  const saved = await repos.scans.savedOfFarm(view.farm.id, addDays(view.today, -LIST_DAYS))
+  const byPond = new Map<string, ScanRow[]>()
+  for (const s of saved) if (s.abw !== null) byPond.set(s.pondId, [...(byPond.get(s.pondId) ?? []), s])
+  return view.ponds.map((p) => tileFor(view, p, byPond.get(p.id) ?? []))
 }
 
 /** `scans` are the pond's saved scans, newest first. */
@@ -131,11 +152,11 @@ function summaryOf(view: FarmView, s: ScanRow, previous: ScanRow | null, photoUr
 }
 
 /** Saved scans that carry a size (a saved scan always should), newest first. */
-async function savedScans(repos: Repos, pondId: string): Promise<ScanRow[]> {
+export async function savedScans(repos: Repos, pondId: string): Promise<ScanRow[]> {
   return (await repos.scans.savedOfPond(pondId)).filter((s) => s.abw !== null && s.perKg !== null)
 }
 
-async function summaries(repos: Repos, view: FarmView, scans: ScanRow[]): Promise<ScanSummary[]> {
+export async function summaries(repos: Repos, view: FarmView, scans: ScanRow[]): Promise<ScanSummary[]> {
   const urls = await repos.photos.urls(scans.flatMap((s) => (s.imageFileId ? [s.imageFileId] : [])))
   return scans.map((s, i) => summaryOf(view, s, scans[i + 1] ?? null, (s.imageFileId && urls[s.imageFileId]) || ''))
 }
@@ -165,10 +186,7 @@ export function pondsRouter(getRepos: GetRepos): Router {
       const { farm, me } = requireFarm(ctx)
       noWorker(me)
       const view = await farmView(repos, farm, me)
-      const saved = await repos.scans.savedOfFarm(farm.id, addDays(view.today, -LIST_DAYS))
-      const byPond = new Map<string, ScanRow[]>()
-      for (const s of saved) if (s.abw !== null) byPond.set(s.pondId, [...(byPond.get(s.pondId) ?? []), s])
-      const ponds = view.ponds.map((p) => tileFor(view, p, byPond.get(p.id) ?? []))
+      const ponds = await farmTiles(repos, view)
       const zones: ZoneSummary[] = [...new Set(ponds.map((t) => t.zone))].map((zone) => {
         const zt = ponds.filter((t) => t.zone === zone)
         return { zone, caretaker: zt[0]?.caretaker ?? null, total: zt.length, photoToday: zt.filter((t) => t.photoToday).length }
@@ -187,8 +205,7 @@ export function pondsRouter(getRepos: GetRepos): Router {
       const scans = await savedScans(repos, pond.id)
       const tile = tileFor(view, pond, scans)
       const cycle = view.cycles.get(pond.id)
-      const stockedOn = cycle?.stockedOn ?? null
-      const growth: GrowthPoint[] = samplesOf(scans, stockedOn).map((x) => ({ day: stockedOn ? daysBetween(stockedOn, x.date) : 0, abw: x.abw, date: x.date }))
+      const growth = growthOf(scans, cycle?.stockedOn ?? null)
       const latest = scans[0] ? (await summaries(repos, view, scans.slice(0, 2)))[0]! : null
       const noteText = scans[0] ? lastFlag(scans[0].flags, 'note:') : null
       const stocking = stockingOf(cycle)

@@ -50,7 +50,7 @@ export async function sessionFor(repos: Repos, ctx: Ctx, lineName: string | unde
       targetPerKg,
     },
     role: me.role,
-    permissions: effective(me.role),
+    permissions: me.perms ?? effective(me.role),
     pondIds: me.role === 'owner' ? ponds.map((p) => p.id) : me.pondIds.filter((id) => pondIds.has(id)),
     creditsLeft: left ?? limit,
   }

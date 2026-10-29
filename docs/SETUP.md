@@ -146,8 +146,8 @@ counts, never a value or an id.
 5. Open `https://liff.line.me/<LIFF_ID>` in LINE. With the database variables
    set (below), a new person lands on starting a farm; someone whose farm is in
    น้องน้ำ gets 403 `use_nong_nam` (no screen of its own yet, so the generic
-   error). Without them the screens answer 503 `db_not_configured`. Part-2
-   screens (today, team, settings, print) still show ส่วนนี้ยังไม่เปิดใช้ค่ะ
+   error). Without them the screens answer 503 `db_not_configured`. Only
+   sending a sheet into the chat still shows ส่วนนี้ยังไม่เปิดใช้ค่ะ
    (code 501). A 401 or a login loop means A.3 or C.4 is wrong.
 6. Prove which OA each token belongs to, from this PC:
    ```bash

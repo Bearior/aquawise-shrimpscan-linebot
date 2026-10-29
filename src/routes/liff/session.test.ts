@@ -271,8 +271,8 @@ describe('no database', () => {
     expect(res.body).toEqual({ error: 'db_not_configured' })
   })
 
-  it('still answers 501 for a route part 1 does not build', async () => {
-    const res = await as(OWNER, oaRepos()).get('/overview')
+  it('still answers 501 for a route that is not built (the inbox)', async () => {
+    const res = await as(OWNER, oaRepos()).get('/inbox')
     expect(res.status).toBe(501)
     expect(res.body).toEqual({ error: 'not_built_yet' })
   })

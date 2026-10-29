@@ -9,6 +9,7 @@
  */
 
 import { DEFAULT_TARGET_PER_KG } from '../domain/farm.js'
+import { settingsFromJson, settingsToJson } from '../domain/settings.js'
 import { ApiError } from './context.js'
 import {
   OA_CREATED_VIA,
@@ -16,6 +17,7 @@ import {
   type CycleRow,
   type FarmRow,
   type GrowthDayInput,
+  type InviteRow,
   type MemberRow,
   type NetRow,
   type PondRow,
@@ -64,6 +66,12 @@ export interface MemoryImageFile {
   pondIds: string[]
 }
 
+/** A `farm_invites` row, with the token only the database keeps. */
+export interface MemoryInvite extends InviteRow {
+  token: string
+  claimedBy?: string | null
+}
+
 export interface MemoryState {
   farms: FarmRow[]
   members: MemberRow[]
@@ -84,6 +92,9 @@ export interface MemoryState {
   /** The quota cannot be read (the RPC failed). */
   quotaDown: boolean
   growth: MemoryGrowth[]
+  invites: MemoryInvite[]
+  /** `shrimp_scan_farm_settings.notify` by farm id, as stored. */
+  settings: Record<string, unknown>
 }
 
 export type MemoryRepos = Repos & { state: MemoryState }
@@ -93,7 +104,7 @@ const tick = () => new Promise<void>((resolve) => setImmediate(resolve))
 export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos {
   const state: MemoryState = {
     farms: [...(seed.farms ?? [])],
-    members: [...(seed.members ?? [])],
+    members: (seed.members ?? []).map((m) => ({ ...m, pondIds: [...m.pondIds] })),
     ponds: (seed.ponds ?? []).map((p) => ({ ...p })),
     nets: (seed.nets ?? []).map((n) => ({ ...n })),
     scans: (seed.scans ?? []).map((s) => ({ ...s })),
@@ -106,6 +117,8 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
     quotaUsed: { ...seed.quotaUsed },
     quotaDown: seed.quotaDown ?? false,
     growth: (seed.growth ?? []).map((g) => ({ ...g })),
+    invites: (seed.invites ?? []).map((i) => ({ ...i })),
+    settings: { ...seed.settings },
   }
   let seq = 0
   /** Open quota charges: scan id to farm id (sizing_quota_charges with no refunded_at). */
@@ -145,6 +158,9 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
       async setTarget(farmId, targetPerKg) {
         state.targets[farmId] = targetPerKg
       },
+      async oaFarmOfKey(farmKey) {
+        return state.farms.find((f) => f.createdBy === farmKey && f.createdVia === OA_CREATED_VIA) ?? null
+      },
     },
     members: {
       async activeFor(lineUserId) {
@@ -153,6 +169,30 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
       },
       async ofFarm(farmId) {
         return state.members.filter((m) => m.farmId === farmId && m.status === 'active')
+      },
+      async byId(farmId, id) {
+        return state.members.find((m) => m.id === id && m.farmId === farmId && m.status === 'active') ?? null
+      },
+      async setRole(id, role) {
+        const m = state.members.find((x) => x.id === id)
+        if (m) m.role = role
+      },
+      async setPonds(id, pondIds) {
+        await tick()
+        const m = state.members.find((x) => x.id === id)
+        if (m) m.pondIds = [...pondIds]
+      },
+      async remove(id) {
+        const m = state.members.find((x) => x.id === id)
+        if (m) Object.assign(m, { status: 'removed', pondIds: [] })
+      },
+      // UNIQUE (farm_owner_line_user_id, member_line_user_id): one row per farm key and person.
+      async join({ farmId, farmKey, lineUserId, role, name, pondIds }) {
+        await tick()
+        const keyOf = (fid: string) => state.farms.find((f) => f.id === fid)?.createdBy
+        const m = state.members.find((x) => x.lineUserId === lineUserId && keyOf(x.farmId) === farmKey)
+        if (m) Object.assign(m, { farmId, role, status: 'active', pondIds: [...pondIds], ...(name ? { name } : {}) })
+        else state.members.push({ id: `member-${++seq}`, farmId, lineUserId, role, name: name ?? '', pondIds: [...pondIds], status: 'active', joinedAt: new Date().toISOString() })
       },
     },
     ponds: {
@@ -292,6 +332,16 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
           state.lineUsers.some((u) => u.id === lineUserId && u.onboarded)
         )
       },
+      async stampScanOnly(lineUserId) {
+        const user = state.lineUsers.find((u) => u.id === lineUserId)
+        if (user?.erased) throw new ApiError(403, 'not_allowed')
+        if (user) {
+          user.platformAccess = 'scan_only'
+          user.signupSource ??= OA_CREATED_VIA
+        } else {
+          state.lineUsers.push({ id: lineUserId, platformAccess: 'scan_only', signupSource: OA_CREATED_VIA, onboarded: false, erased: false })
+        }
+      },
     },
     quota: {
       async left(farmId, limit) {
@@ -330,6 +380,50 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
         if (row) Object.assign(row, { cycleId, ageDays, abw, lo, hi, n, perKg })
         else state.growth.push({ ...input, source: 'lift_net_photo' })
         return 'written'
+      },
+    },
+    invites: {
+      async pendingOf(farmKey) {
+        return state.invites.filter((i) => i.farmKey === farmKey && i.status === 'pending').sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      },
+      async create({ farmKey, createdBy, code, token, role, pondIds, expiresAt }) {
+        await tick()
+        if (state.invites.some((i) => i.code === code)) return 'code_taken'
+        const row: MemoryInvite = {
+          id: `invite-${++seq}`, farmKey, code, token, role, pondIds: [...pondIds], status: 'pending',
+          expiresAt, createdAt: new Date().toISOString(), createdBy,
+        }
+        state.invites.push(row)
+        return { ...row }
+      },
+      async byCode(code) {
+        const i = state.invites.find((x) => x.code === code)
+        return i ? { ...i } : null
+      },
+      async cancel(farmKey, code) {
+        const i = state.invites.find((x) => x.farmKey === farmKey && x.code === code && x.status === 'pending')
+        if (i) i.status = 'cancelled'
+        return Boolean(i)
+      },
+      async claim(id, lineUserId) {
+        await tick()
+        const i = state.invites.find((x) => x.id === id && x.status === 'pending')
+        if (!i) return false
+        Object.assign(i, { status: 'claimed', claimedBy: lineUserId })
+        return true
+      },
+      async unclaim(id) {
+        const i = state.invites.find((x) => x.id === id && x.status === 'claimed')
+        if (i) Object.assign(i, { status: 'pending', claimedBy: null })
+      },
+    },
+    settings: {
+      async read(farmId) {
+        return settingsFromJson(state.settings[farmId])
+      },
+      async write(farmId, settings) {
+        await tick()
+        state.settings[farmId] = settingsToJson(settings)
       },
     },
   }
