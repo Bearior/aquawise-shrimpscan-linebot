@@ -10,6 +10,7 @@ import { addDays, bangkokDay } from '../../domain/farm.js'
 import { CENTRED_RING, ellipseToRing, pointsToEllipse, ringToPoints } from '../../domain/rim-geometry.js'
 import { shrimpLenPx } from '../../domain/scan-view.js'
 import type { SizingClient, SizingMeasureResponse, SizingRing, SizingRimResponse } from '../../lib/sizing.js'
+import { userTag } from '../liff-me.js'
 
 const YOR = readFileSync(fileURLToPath(new URL('../../../liff-app/dev-mock/fixtures/yor.jpg', import.meta.url)))
 
@@ -51,6 +52,8 @@ function as(who: string, repos: MemoryRepos, sizing: SizingClient = stubSizing()
     measure: (id: string, body: MeasureRequest | Record<string, unknown>) => request(app).post(`/api/liff/scans/${id}/measure`).set(auth).send(body),
     net: (id: string, netId: string) => request(app).post(`/api/liff/scans/${id}/net`).set(auth).send({ netId }),
     save: (id: string, body: Record<string, unknown> = {}) => request(app).post(`/api/liff/scans/${id}/save`).set(auth).send(body),
+    fix: (id: string, rim: unknown) => request(app).post(`/api/liff/scans/${id}/fix`).set(auth).send({ rim }),
+    fixApply: (id: string, body: Record<string, unknown>) => request(app).post(`/api/liff/scans/${id}/fix/apply`).set(auth).send(body),
   }
 }
 
@@ -525,5 +528,141 @@ describe('POST /scans/:id/save', () => {
     expect(again.status).toBe(409)
     expect(again.body).toEqual({ error: 'already_saved' })
     expect(sizing.measure).toHaveBeenCalledTimes(1)
+  })
+})
+
+/* ---------- Task 7: fix the rim ---------- */
+
+describe('POST /scans/:id/fix and /fix/apply', () => {
+  const RIM2 = ringToPoints([0.5, 0.5, 0.34, 0.3, 0], 520, 461)
+  const NEW: MeasureAnswer = { ok: true, data: answer({ estimate: { ...answer().estimate!, abw_g: 15, range_g: [13, 17], shrimp_per_kg: 67 } }) }
+  const manager: MemberRow = { id: 'm-mgr', farmId: farm.id, lineUserId: 'Umanager', role: 'manager', name: 'พี่ต้อม', pondIds: [], status: 'active' }
+
+  /** The owner's photo, measured and saved into p1 today. */
+  async function savedScan(repos: MemoryRepos, sizing: SizingClient): Promise<string> {
+    const id = await uploaded(repos, OWNER, sizing)
+    const a = as(OWNER, repos, sizing)
+    expect((await a.measure(id, { rim: RIM, netId: 'net-82' })).status).toBe(200)
+    expect((await a.save(id)).status).toBe(200)
+    return id
+  }
+
+  it('the scan’s own measurer gets the old and the new result side by side; nothing stored, one re-measure used, no scan taken', async () => {
+    const repos = seeded()
+    const sizing = sizingAnswering(OK, NEW)
+    const id = await savedScan(repos, sizing)
+    const res = await as(OWNER, repos, sizing).fix(id, RIM2)
+    expect(res.status).toBe(200)
+    expect(res.body.before).toMatchObject({ abw: 13.9, perKg: 72, remeasuresLeft: 2 })
+    expect(res.body.after).toMatchObject({ abw: 15, perKg: 67, count: 3, remeasuresLeft: 2, net: { id: 'net-82', cm: 82 } })
+    expect(res.body.after.measuredAt).toBe(res.body.before.measuredAt)
+    const opts = vi.mocked(sizing.measure).mock.calls[1]![2]
+    expect(opts.diameterCm).toBe(82)
+    ellipseToRing(pointsToEllipse(RIM2, 520, 461)!).forEach((v, i) => expect(opts.rimEllipse[i]).toBeCloseTo(v, 9))
+    // The new result is only shown; its SAM3 use and the re-measure are kept.
+    expect(rowOf(repos, id)).toMatchObject({ abw: 13.9, perKg: 72, sampleDate: bangkokDay(), sam3Calls: 4, sam3HttpAttempts: 4 })
+    expect(rowOf(repos, id).flags.filter((f) => f === 'remeasure')).toHaveLength(1)
+    expect(repos.state.quotaUsed[farm.id]).toBe(1)
+    expect(repos.state.growth[0]).toMatchObject({ abw: 13.9 })
+  })
+
+  it('a worker may not fix, their own photo or anyone else’s; a manager may fix the owner’s', async () => {
+    const repos = seeded({ members: [...members, manager] })
+    const sizing = sizingAnswering(OK, NEW)
+    const own = await uploaded(repos, WORKER, sizing)
+    await as(WORKER, repos, sizing).measure(own, { rim: RIM, netId: 'net-82' })
+    const owners = await uploaded(repos, OWNER, sizing, Buffer.concat([YOR, Buffer.from([0])]))
+    await as(OWNER, repos, sizing).measure(owners, { rim: RIM, netId: 'net-82' })
+    for (const id of [own, owners]) {
+      const res = await as(WORKER, repos, sizing).fix(id, RIM2)
+      expect(res.status).toBe(403)
+      expect(res.body).toEqual({ error: 'not_allowed' })
+      expect((await as(WORKER, repos, sizing).fixApply(id, { use: 'new', rim: RIM2 })).status).toBe(403)
+    }
+    expect(sizing.measure).toHaveBeenCalledTimes(2)
+    const res = await as('Umanager', repos, sizing).fix(owners, RIM2)
+    expect(res.status).toBe(200)
+    expect(res.body.after).toMatchObject({ abw: 15 })
+  })
+
+  it('use new stores the new result, the history says who fixed it, when, and the old number; the pond-day growth row follows', async () => {
+    const repos = seeded()
+    const sizing = sizingAnswering(OK, NEW)
+    const id = await savedScan(repos, sizing)
+    const a = as(OWNER, repos, sizing)
+    const first = rowOf(repos, id).measuredAt
+    await a.fix(id, RIM2)
+    const before = Date.now()
+    const res = await a.fixApply(id, { use: 'new', rim: RIM2 })
+    expect(res.status).toBe(204)
+    expect(sizing.measure).toHaveBeenCalledTimes(2)
+    const row = rowOf(repos, id)
+    expect(row).toMatchObject({ abw: 15, perKg: 67, abwLo: 13, abwHi: 17, sampleDate: bangkokDay(), measuredAt: first, sam3Calls: 4 })
+    expect(row.flags.filter((f) => f.startsWith('fixed:'))).toEqual([expect.stringMatching(new RegExp(`^fixed:${userTag(OWNER)}:72:\\d+$`))])
+
+    const history = await a.get('/ponds/p1/scans')
+    expect(history.status).toBe(200)
+    expect(history.body.scans[0]).toMatchObject({ scanId: id, abw: 15, perKg: 67, fixed: { by: 'พี่วิชัย', oldPerKg: 72 } })
+    expect(Date.parse(history.body.scans[0].fixed.at)).toBeGreaterThanOrEqual(before - 1000)
+    expect(repos.state.growth).toHaveLength(1)
+    expect(repos.state.growth[0]).toMatchObject({ abw: 15, perKg: 67, lo: 13, hi: 17 })
+    expect((await a.get(`/scans/${id}`)).body.result).toMatchObject({ abw: 15, remeasuresLeft: 2, measuredAt: first })
+  })
+
+  it('use old changes nothing; use new with no fix behind it, or on another rim, is 409 fix_expired and measures nothing', async () => {
+    const repos = seeded()
+    const sizing = sizingAnswering(OK, NEW)
+    const id = await savedScan(repos, sizing)
+    const a = as(OWNER, repos, sizing)
+    const none = await a.fixApply(id, { use: 'new', rim: RIM2 })
+    expect(none.status).toBe(409)
+    expect(none.body).toEqual({ error: 'fix_expired' })
+    await a.fix(id, RIM2)
+    expect((await a.fixApply(id, { use: 'new', rim: RIM })).body).toEqual({ error: 'fix_expired' })
+    expect((await a.fixApply(id, { use: 'maybe', rim: RIM2 })).status).toBe(400)
+    expect((await a.fixApply(id, { use: 'old', rim: RIM2 })).status).toBe(204)
+    expect(rowOf(repos, id)).toMatchObject({ abw: 13.9, perKg: 72 })
+    expect(rowOf(repos, id).flags.some((f) => f.startsWith('fixed:'))).toBe(false)
+    // Keeping the old one drops the new one.
+    expect((await a.fixApply(id, { use: 'new', rim: RIM2 })).status).toBe(409)
+    expect(sizing.measure).toHaveBeenCalledTimes(2)
+  })
+
+  it('a measure of the photo after the fix makes that fix stale: use new is 409 fix_expired', async () => {
+    const repos = seeded()
+    const sizing = sizingAnswering(OK, NEW)
+    const id = await uploaded(repos, OWNER, sizing)
+    const a = as(OWNER, repos, sizing)
+    await a.measure(id, { rim: RIM, netId: 'net-82' })
+    expect((await a.fix(id, RIM2)).status).toBe(200)
+    expect((await a.measure(id, { rim: RIM, netId: 'net-82' })).status).toBe(200)
+    expect((await a.fixApply(id, { use: 'new', rim: RIM2 })).body).toEqual({ error: 'fix_expired' })
+    expect(rowOf(repos, id).flags.some((f) => f.startsWith('fixed:'))).toBe(false)
+  })
+
+  it('fixes share the three free re-measures; one that fails is used up and keeps the result; not before a measure, nor another farm’s', async () => {
+    const repos = seeded()
+    const sizing = sizingAnswering(OK, { ok: false, code: 'TIMEOUT' }, NEW)
+    const fresh = await uploaded(repos, OWNER, sizing, Buffer.concat([YOR, Buffer.from([1])]))
+    const early = await as(OWNER, repos, sizing).fix(fresh, RIM2)
+    expect(early.status).toBe(409)
+    expect(early.body).toEqual({ error: 'not_measured' })
+    expect((await as(OWNER, repos, sizing).fix('nope', RIM2)).status).toBe(404)
+    expect((await as(OWNER, repos, sizing).fix(fresh, [{ x: 0.5, y: 0.5 }])).status).toBe(400)
+
+    const id = await savedScan(repos, sizing)
+    const a = as(OWNER, repos, sizing)
+    const failed = await a.fix(id, RIM2)
+    expect(failed.status).toBe(502)
+    expect(failed.body).toEqual({ error: 'measure_failed', reason: 'timeout' })
+    expect(rowOf(repos, id)).toMatchObject({ abw: 13.9 })
+    expect((await a.fixApply(id, { use: 'new', rim: RIM2 })).status).toBe(409)
+    expect((await a.fix(id, RIM2)).body.after.remeasuresLeft).toBe(1)
+    expect((await a.fix(id, RIM2)).body.after.remeasuresLeft).toBe(0)
+    const fourth = await a.fix(id, RIM2)
+    expect(fourth.status).toBe(409)
+    expect(fourth.body).toEqual({ error: 'remeasure_limit' })
+    expect(sizing.measure).toHaveBeenCalledTimes(4)
+    expect(repos.state.quotaUsed[farm.id]).toBe(1)
   })
 })

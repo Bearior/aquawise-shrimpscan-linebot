@@ -28,9 +28,8 @@ import type { FarmRow, MemberRow, PondRow, Repos, ScanRow } from '../../data/typ
 import { bangkokDay, daysBetween } from '../../domain/farm.js'
 import { personName } from '../../domain/names.js'
 import { netView, pondNet } from '../../domain/nets.js'
-import { effective } from '../../domain/permissions.js'
 import { CENTRED_RING, ringToPoints } from '../../domain/rim-geometry.js'
-import { foundOf, mayMeasure, photoSizeOf, scanFor, toScanResult } from '../../domain/scan-view.js'
+import { foundOf, mayFix, mayMeasure, photoSizeOf, scanFor, toScanResult } from '../../domain/scan-view.js'
 import { imageInfo, type ImageInfo } from '../../lib/image-size.js'
 import { logger } from '../../lib/logger.js'
 import type { SizingClient } from '../../lib/sizing.js'
@@ -92,7 +91,7 @@ export async function scanView(repos: Repos, farmId: string, row: ScanRow, me: M
     result: sized ? toScanResult(row, { id: row.netId ?? '', cm: row.refCm! }, W, H, previousOf(saved, row)) : null,
     found: sized ? (foundOf(row, W, H) ?? []) : null,
     measuredBy: measured ? personName(members, row.lineUserId) : null,
-    canFix: measured && me.role !== 'worker' && (row.lineUserId === me.lineUserId || effective(me.role).editOthers),
+    canFix: measured && mayFix(me, row),
   })
 }
 
@@ -114,7 +113,7 @@ function parseNotes(body: unknown): string[] {
  * with. The OA reads its own scans, so a miss is logged, never the save's
  * failure.
  */
-async function mirrorGrowth(repos: Repos, farm: FarmRow, row: ScanRow, day: string): Promise<void> {
+export async function mirrorGrowth(repos: Repos, farm: FarmRow, row: ScanRow, day: string): Promise<void> {
   try {
     const cycle = await repos.cycles.openOf(row.pondId)
     const age = cycle?.stockedOn ? daysBetween(cycle.stockedOn, day) : null

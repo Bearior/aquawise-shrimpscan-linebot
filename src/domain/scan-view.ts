@@ -142,6 +142,11 @@ export function mayMeasure(me: MemberRow, row: Pick<ScanRow, 'lineUserId'>): boo
   return row.lineUserId === me.lineUserId || effective(me.role).measureInbox
 }
 
+/** A result's rim is fixed by its measurer (the sender) or, with editOthers, by an owner or manager; never by a worker. */
+export function mayFix(me: MemberRow, row: Pick<ScanRow, 'lineUserId'>): boolean {
+  return me.role !== 'worker' && (row.lineUserId === me.lineUserId || effective(me.role).editOthers)
+}
+
 /** A worker sees no number: their scan carries `found` and never `result`. */
 export function scanFor(me: MemberRow, scan: Scan): Scan {
   return me.role === 'worker' ? { ...scan, result: null } : scan
