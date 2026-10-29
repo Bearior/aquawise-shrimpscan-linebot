@@ -12,7 +12,7 @@ importers:
         specifier: ^9.4.0
         version: 9.9.0
       '@supabase/supabase-js':
-        specifier: ^2
+        specifier: ^2.118.0
         version: 2.118.0
       express:
         specifier: ^4.21.2
