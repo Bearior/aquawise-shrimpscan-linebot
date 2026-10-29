@@ -98,7 +98,7 @@ svg .w-pop {
 .scr button:active:not(:disabled) {
   transform: scale(0.97);
 }
-.scr button:is(.pd, .xpd, .snr, .rcard, .popt, .tile, .li):active:not(:disabled),
+.scr button:is(.pd, .xpd, .snr, .rcard, .popt, .tile, .li, .pkr):active:not(:disabled),
 .scr .nsh button:active:not(:disabled) {
   transform: scale(0.985);
 }

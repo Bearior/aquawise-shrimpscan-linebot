@@ -567,9 +567,6 @@
 .hdr .pb .i{width:20px;height:20px}
 
 /* pond page, ยอ settings */
-.pnav{display:grid;grid-template-columns:auto 1fr auto;gap:8px}
-.pnav button{min-height:48px;border-radius:14px;border:2px solid #9A99AE !important;background:#fff !important;font-size:17px;font-weight:800;display:flex !important;align-items:center;justify-content:center;gap:2px;padding:0 10px !important}
-.pnav button.c{border-color:var(--hero) !important;background:var(--herot) !important;color:var(--hero)}
 .pnote{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid var(--ln);border-radius:16px;padding:12px 14px;font-size:16px;line-height:1.5}
 .pnote .i{color:var(--hero);margin-top:3px}
 .pst2{display:grid;grid-template-columns:1fr 1fr;gap:8px}

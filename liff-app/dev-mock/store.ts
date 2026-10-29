@@ -673,13 +673,14 @@ export class Store {
 
   private growth(farm: MFarm, p: MPond): GrowthPoint[] {
     const start = p.stockedOn
+    // The spread: the pond's CV on the older weights (a little uneven, like real scans), each saved scan's own CV after.
     const pts = [
-      ...p.past,
+      ...p.past.map((x, i) => ({ ...x, sd: round1(x.abw * p.cv * (1 + 0.15 * Math.sin(i * 1.9))) })),
       ...this.saved(farm, p.id)
         .reverse()
-        .map((s) => ({ date: dayOf(s.at), abw: s.result!.abw })),
+        .map((s) => ({ date: dayOf(s.at), abw: s.result!.abw, sd: round1(s.result!.abw * s.result!.cv) })),
     ]
-    return pts.map((x) => ({ date: x.date, abw: x.abw, day: start ? daysBetween(start, x.date) : 0 }))
+    return pts.map((x) => ({ date: x.date, abw: x.abw, sd: x.sd, day: start ? daysBetween(start, x.date) : 0 }))
   }
 
   pondDetail(persona: Persona, id: string): PondDetail {

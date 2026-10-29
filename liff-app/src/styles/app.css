@@ -776,3 +776,145 @@ body {
     transition: none;
   }
 }
+
+/* หน้าบ่อ: the pond name in the header opens เลือกบ่อ. */
+.ppick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 10px 0 14px;
+  border-radius: 12px;
+  background: var(--sf);
+  font-size: inherit;
+  font-weight: inherit;
+  vertical-align: middle;
+}
+.ppick > .i {
+  width: 20px;
+  height: 20px;
+  stroke: var(--hero);
+}
+
+/* เลือกบ่อ (pond-picker.tsx): น้องน้ำ's PondPickerSheet in this app's large
+   text. A pill per zone with a hairline out to the edge, a hairline between
+   rows, none under a zone's last row, the pond you are on tinted. The grab and
+   the title stay put; only the list scrolls. */
+.scr .sheet.pk {
+  display: flex;
+  flex-direction: column;
+  max-height: 72%;
+  overflow: hidden;
+}
+.sheet.pk > .grab {
+  align-self: center;
+  flex: none;
+}
+.pk-h {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-right: -6px;
+}
+.pk-list {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 -16px;
+  padding: 0 16px;
+}
+.pk-g {
+  display: grid;
+}
+.pk-zh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0 4px;
+}
+.pk-zh span {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--sf);
+  color: var(--ink2);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.pk-zh i {
+  flex: 1;
+  height: 1px;
+  background: var(--ln);
+}
+.pkr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--ln);
+}
+.pk-g .pkr:last-child {
+  border-bottom: 0;
+}
+.pkr.on {
+  background: var(--herot);
+  border-radius: 12px;
+}
+.pkr b {
+  flex: 1;
+  min-width: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+.pkr span {
+  color: var(--ink3);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* The dot takes the colour of หน้าบ่อ's banner. Every dot is filled, as in
+   น้องน้ำ, where a hollow dot means a pond you cannot pick; the one hollow here
+   is no photo today, like the dashed square in รายบ่อ. โตดี is white in the
+   banner, so its dot is the app's blue. */
+.pk-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.pk-dot.r {
+  background: var(--teal);
+}
+.pk-dot.g {
+  background: var(--hero);
+}
+.pk-dot.w {
+  background: #b26a00;
+}
+.pk-dot.u {
+  background: var(--bad);
+}
+.pk-dot.m {
+  border: 2px solid var(--bad);
+}
+
+/* หน้าบ่อ: what you do with this pond, at the top. Scan and print side by
+   side, the ask-again link under them; a button alone takes the whole row. */
+.pact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.pact > .w {
+  grid-column: 1 / -1;
+}
+.xl .pact > .vbtn.l {
+  height: 44px;
+}

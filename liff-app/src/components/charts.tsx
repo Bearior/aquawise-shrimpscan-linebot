@@ -1,9 +1,25 @@
 import type { GrowthPoint } from '@/api/types'
 import { dayOfMonth, fmt1, fmtDay, monthShort } from '@/lib/format'
 
+/** Runs of neighbouring points that carry an SD; a point without one breaks the band. */
+function sdRuns(points: GrowthPoint[]): GrowthPoint[][] {
+  const runs: GrowthPoint[][] = []
+  let run: GrowthPoint[] = []
+  for (const p of points) {
+    if (p.sd != null) run.push(p)
+    else if (run.length) {
+      runs.push(run)
+      run = []
+    }
+  }
+  if (run.length) runs.push(run)
+  return runs
+}
+
 /**
  * Average weight over the crop, with the target size as a dashed teal line and
  * a dashed projection. `big` uses the large labels with units on the axes.
+ * `band` shades one SD either side of the average: where most of the shrimp are.
  */
 export function GrowthChart({
   points,
@@ -11,6 +27,7 @@ export function GrowthChart({
   w,
   h,
   big = true,
+  band = false,
   projectDays = 7,
   gPerDay,
 }: {
@@ -19,6 +36,7 @@ export function GrowthChart({
   w: number
   h: number
   big?: boolean
+  band?: boolean
   projectDays?: number
   gPerDay?: number | null
 }) {
@@ -29,7 +47,9 @@ export function GrowthChart({
   const proj = { day: last.day + projectDays, abw: last.abw + rate * projectDays }
   const d0 = Math.floor((points[0]!.day - 4) / 10) * 10
   const d1 = proj.day + 2
-  const ymax = Math.max(10, Math.ceil((Math.max(targetG, proj.abw, ...points.map((p) => p.abw)) * 1.1) / 10) * 10)
+  const runs = band ? sdRuns(points) : []
+  const top = (p: GrowthPoint) => p.abw + (band ? (p.sd ?? 0) : 0)
+  const ymax = Math.max(10, Math.ceil((Math.max(targetG, proj.abw, ...points.map(top)) * 1.1) / 10) * 10)
   const fs = big ? 13 : 10
   const fl = big ? 14 : 10.5
   const sw = big ? 3 : 2.4
@@ -43,7 +63,9 @@ export function GrowthChart({
   const yTicks = Array.from({ length: ymax / 10 + 1 }, (_, i) => i * 10)
   const xTicks: number[] = []
   for (let d = Math.ceil(d0 / 20) * 20; d <= d1 - 4; d += 20) if (d > d0) xTicks.push(d)
-  const label = `น้ำหนักเฉลี่ยจาก ${fmt1(points[0]!.abw)} กรัมถึง ${fmt1(last.abw)} กรัม ไซส์ ${targetPerKg} คือ ${fmt1(targetG)} กรัม`
+  const spread = band && last.sd != null ? ` กุ้งส่วนใหญ่หนัก ${fmt1(Math.max(0, last.abw - last.sd))} ถึง ${fmt1(last.abw + last.sd)} กรัม` : ''
+  const label = `น้ำหนักเฉลี่ยจาก ${fmt1(points[0]!.abw)} กรัมถึง ${fmt1(last.abw)} กรัม${spread} ไซส์ ${targetPerKg} คือ ${fmt1(targetG)} กรัม`
+  const at = (p: GrowthPoint, v: number) => `${x(p.day).toFixed(1)} ${y(Math.max(0, v)).toFixed(1)}`
   return (
     <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label={label} style={{ width: '100%', height: 'auto', display: 'block' }}>
       {big ? (
@@ -65,8 +87,23 @@ export function GrowthChart({
           {big ? ' วัน' : ''}
         </text>
       ))}
+      {runs.map((run, i) =>
+        run.length > 1 ? (
+          <path
+            key={i}
+            d={`M${run.map((p) => at(p, p.abw + p.sd!)).join('L')}L${[...run].reverse().map((p) => at(p, p.abw - p.sd!)).join('L')}Z`}
+            fill="#004AAD"
+            fillOpacity={0.16}
+            stroke="#004AAD"
+            strokeOpacity={0.28}
+            strokeWidth={1}
+          />
+        ) : (
+          <line key={i} x1={x(run[0]!.day)} x2={x(run[0]!.day)} y1={y(run[0]!.abw + run[0]!.sd!)} y2={y(Math.max(0, run[0]!.abw - run[0]!.sd!))} stroke="#004AAD" strokeOpacity={0.22} strokeWidth={8} strokeLinecap="round" />
+        ),
+      )}
       <line x1={l} x2={w - r} y1={y(targetG)} y2={y(targetG)} stroke="#00706F" strokeWidth={big ? 2.4 : 1.8} strokeDasharray="2 4" />
-      <text x={l + 5} y={y(targetG) - 6} fontSize={fl} fontWeight={700} fill="#004B4B">
+      <text x={l + 5} y={y(targetG) - 6} fontSize={fl} fontWeight={700} fill="#004B4B" stroke="#fff" strokeWidth={4} strokeLinejoin="round" paintOrder="stroke">
         ไซส์ {targetPerKg} = {fmt1(targetG).replace(/\.0$/, '')} ก.
       </text>
       <path d={`M${x(last.day)} ${y(last.abw)} L${x(proj.day)} ${y(proj.abw)}`} stroke="#004AAD" strokeWidth={2} strokeDasharray="5 5" fill="none" />

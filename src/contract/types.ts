@@ -133,6 +133,8 @@ export interface GrowthPoint {
   day: number
   abw: number
   date: string
+  /** Standard deviation of the weights at that scan, grams. Missing when not known: the chart draws no band there. */
+  sd?: number | null
 }
 
 export interface Stocking {

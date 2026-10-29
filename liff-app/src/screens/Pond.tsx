@@ -8,6 +8,7 @@ import { Btn, ErrorState, MBtn, Skeleton } from '@/components/ui'
 import { DistBody } from '@/components/result'
 import { GrowthChart } from '@/components/charts'
 import { AskAgainSheet } from '@/components/ask-again'
+import { PondPickerSheet } from '@/components/pond-picker'
 import { addDays, dayOfMonth, fmt1, fmtDay, fmtDayYear, fmtInt, fmtTime, fmtTonnes, fmtWeekdayShort, fmtWhen, monthShort } from '@/lib/format'
 import { gramsAt } from '@/lib/sizes'
 import { useApi } from '@/lib/use-api'
@@ -54,14 +55,16 @@ function Banner({ d, target }: { d: PondDetail; target: number }) {
   )
 }
 
-/** หน้าบ่อ (O23): the answer first (ready in N days), then the numbers, the sizes, growth, tonnes, the last scan. */
+/** หน้าบ่อ (O23): what to do with the pond first, then the answer (ready in N days), the numbers, the sizes, growth, tonnes, the last scan. */
 export default function Pond() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { session } = useSession()
   const toast = useToast()
   const r = useApi(() => api.pond(id), [id])
+  const all = useApi(() => api.ponds(), [])
   const [ask, setAsk] = useState(false)
+  const [picking, setPicking] = useState(false)
   const farm = session.farm!
 
   if (!r.data) {
@@ -78,13 +81,32 @@ export default function Pond() {
   const left = p.abw !== null ? Math.max(0, targetG - p.abw) : null
   const st = d.stocking
   const who = [p.caretaker, `โซน ${p.zone}`, p.ageDays !== null ? `เลี้ยง ${p.ageDays} วัน` : null].filter(Boolean).join(' · ')
+  const canPrint = session.permissions.printSheet && Boolean(d.latest)
+  const hasBand = d.growth.length >= 2 && d.growth.some((g) => g.sd != null)
 
   return (
     <Page
-      title={`บ่อ ${p.code}`}
+      title={
+        <button type="button" className="ppick" aria-haspopup="dialog" aria-expanded={picking} aria-label={`บ่อ ${p.code} · เลือกบ่ออื่น`} onClick={() => setPicking(true)}>
+          บ่อ {p.code}
+          <Icon n="down" />
+        </button>
+      }
       back={P.ponds}
       over={
-        ask && d.latest ? (
+        picking ? (
+          <PondPickerSheet
+            data={all.data ?? null}
+            error={all.error}
+            onRetry={all.reload}
+            currentId={p.id}
+            onCancel={() => setPicking(false)}
+            onPick={(next) => {
+              setPicking(false)
+              navigate(P.pond(next), { replace: true })
+            }}
+          />
+        ) : ask && d.latest ? (
           <AskAgainSheet
             scanId={d.latest.scanId}
             pondCode={p.code}
@@ -100,22 +122,24 @@ export default function Pond() {
         ) : null
       }
     >
-      <div className="pnav">
-        <button type="button" disabled={!d.prevId} onClick={() => d.prevId && navigate(P.pond(d.prevId), { replace: true })} aria-label={d.prevCode ? `ไปบ่อ ${d.prevCode}` : 'ไม่มีบ่อก่อนหน้า'}>
-          <Icon n="back" />
-          {d.prevCode ?? ''}
-        </button>
-        <button type="button" className="c" onClick={() => navigate(P.ponds)}>
-          เลือกบ่ออื่น ({farm.pondCount})
-        </button>
-        <button type="button" disabled={!d.nextId} onClick={() => d.nextId && navigate(P.pond(d.nextId), { replace: true })} aria-label={d.nextCode ? `ไปบ่อ ${d.nextCode}` : 'ไม่มีบ่อถัดไป'}>
-          {d.nextCode ?? ''}
-          <Icon n="chev" />
-        </button>
-      </div>
       <div style={{ display: 'grid', gap: 2 }}>
         <b className="l1">บ่อ {p.code}</b>
         <span className="l5 mut">{who}</span>
+      </div>
+      <div className="pact">
+        <Btn kind="s" icon="scan" className={canPrint ? undefined : 'w'} onClick={() => navigate(P.scan(p.id))}>
+          สแกนบ่อนี้
+        </Btn>
+        {canPrint ? (
+          <Btn kind="s" icon="print" onClick={() => navigate(P.printPond(p.id))}>
+            พิมพ์ใบผล
+          </Btn>
+        ) : null}
+        {d.latest && p.caretaker ? (
+          <Btn kind="l" className="w" onClick={() => setAsk(true)}>
+            ขอรูปใหม่จาก{p.caretaker}
+          </Btn>
+        ) : null}
       </div>
       <Banner d={d} target={target} />
       {p.perKg !== null && p.abw !== null ? (
@@ -157,7 +181,8 @@ export default function Pond() {
         <span className="l5 mut">
           เส้นประเขียว คือไซส์ {target} ({fmt1(targetG).replace(/\.0$/, '')} กรัม)
         </span>
-        <GrowthChart points={d.growth} targetPerKg={target} w={300} h={190} gPerDay={p.gPerDay} />
+        {hasBand ? <span className="l5 mut">แถบฟ้า คือช่วงน้ำหนักกุ้งส่วนใหญ่ (± SD)</span> : null}
+        <GrowthChart points={d.growth} targetPerKg={target} w={300} h={190} gPerDay={p.gPerDay} band />
         <div className="pst2">
           <div>
             <span>ต้องโตอีก</span>
@@ -216,19 +241,6 @@ export default function Pond() {
       ) : (
         <div className="vc soft l5">บ่อนี้ยังไม่มีผลสแกน · ล่าสุด {fmtDayYear(session.today)}</div>
       )}
-      <Btn kind="s" icon="scan" onClick={() => navigate(P.scan(p.id))}>
-        สแกนบ่อนี้
-      </Btn>
-      {session.permissions.printSheet && d.latest ? (
-        <Btn kind="s" icon="print" onClick={() => navigate(P.printPond(p.id))}>
-          พิมพ์ใบผลสแกนบ่อนี้
-        </Btn>
-      ) : null}
-      {d.latest && p.caretaker ? (
-        <Btn kind="l" onClick={() => setAsk(true)}>
-          ขอรูปใหม่จาก{p.caretaker}
-        </Btn>
-      ) : null}
     </Page>
   )
 }

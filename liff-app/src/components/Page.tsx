@@ -146,11 +146,11 @@ export function Page({ title, sub, back, close, step, foot, two, nav, top, over,
 }
 
 /** A bottom sheet with the dim behind it; a tap on the dim cancels. */
-export function Sheet({ onCancel, children, label }: { onCancel: () => void; children: ReactNode; label: string }) {
+export function Sheet({ onCancel, children, label, className }: { onCancel: () => void; children: ReactNode; label: string; className?: string }) {
   return (
     <>
       <button type="button" className="dim" aria-label="ปิด" onClick={onCancel} />
-      <div className="sheet" role="dialog" aria-modal="true" aria-label={label}>
+      <div className={className ? `sheet ${className}` : 'sheet'} role="dialog" aria-modal="true" aria-label={label}>
         <span className="grab" aria-hidden="true" />
         {children}
       </div>
