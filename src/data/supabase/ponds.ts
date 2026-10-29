@@ -25,5 +25,9 @@ export function supabasePonds(db: SupabaseClient): PondsRepo {
       const { error } = await db.from('ponds').update({ net_id: netId, net_id_source: 'assigned' }).eq('id', pondId)
       if (error) throw dbFail('ponds.setNet', error)
     },
+    async moveNet(farmId, from, to) {
+      const { error } = await db.from('ponds').update({ net_id: to }).eq('farm_id', farmId).eq('net_id', from)
+      if (error) throw dbFail('ponds.moveNet', error)
+    },
   }
 }

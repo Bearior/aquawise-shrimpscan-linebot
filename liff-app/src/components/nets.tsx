@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NET_CM_MAX, NET_CM_MIN, type Net, type NetShape } from '@/api/types'
 import { NET_SHAPE_LABEL } from '@/copy/th'
+import { NET_SHAPES } from '@/lib/rim'
 import { Icon } from './Icon'
 import { Chip, Head2, Head3, MBtn, Tip } from './ui'
 import { Sheet } from './Page'
@@ -123,7 +124,9 @@ export interface NetChoice {
 
 /** Start from the ยอ this pond used last time, or from nothing on a farm's first scan. */
 export function netChoiceFrom(pondNet: Net | null): NetChoice {
-  return pondNet ? { shape: pondNet.shape, netId: pondNet.id, adding: false, typed: '' } : { shape: null, netId: null, adding: false, typed: '' }
+  // With one shape to choose, the farm's first scan starts on it.
+  const only = NET_SHAPES.length === 1 ? NET_SHAPES[0]! : null
+  return pondNet ? { shape: pondNet.shape, netId: pondNet.id, adding: false, typed: '' } : { shape: only, netId: null, adding: false, typed: '' }
 }
 
 /** What ถัดไป does with the choice: use a saved ยอ, save a new size, or nothing yet. */
@@ -174,7 +177,7 @@ export function NetStep({
         d={nets.length ? 'น้ำเลือกยอที่บ่อนี้ใช้ไว้ให้ วันนี้ใช้ยออื่น แตะเปลี่ยนได้เลยค่ะ' : 'น้ำเทียบตัวกุ้งกับขนาดยอ ตอบครั้งเดียว ครั้งหน้าน้ำจำไว้ให้'}
       />
       <div className="nsh" role="radiogroup" aria-label="รูปทรงยอ">
-        {(['round', 'square'] as NetShape[]).map((s) => (
+        {NET_SHAPES.map((s) => (
           <button key={s} type="button" role="radio" aria-checked={shape === s} className={shape === s ? 'on' : ''} onClick={() => pickShape(s)}>
             {s === 'round' ? <RoundArt cm={shape === s ? cm : null} /> : <SquareArt cm={shape === s ? cm : null} />}
             {NET_SHAPE_LABEL[s]}
@@ -316,12 +319,11 @@ export function NetNewSheet({
     <Sheet onCancel={onCancel} label={title}>
       <Head2 t={title} d="ขึงสายวัดผ่านกลางยอ จากขอบพื้นตาข่ายฝั่งหนึ่งถึงอีกฝั่ง" />
       <div className="nshc" role="radiogroup" aria-label="รูปทรงยอ">
-        <Chip on={shape === 'round'} onClick={() => setShape('round')}>
-          ยอกลม
-        </Chip>
-        <Chip on={shape === 'square'} onClick={() => setShape('square')}>
-          ยอสี่เหลี่ยม
-        </Chip>
+        {NET_SHAPES.map((s) => (
+          <Chip key={s} on={shape === s} onClick={() => setShape(s)}>
+            {NET_SHAPE_LABEL[s]}
+          </Chip>
+        ))}
       </div>
       <form
         onSubmit={(e) => {

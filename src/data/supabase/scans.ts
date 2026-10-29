@@ -4,7 +4,7 @@ import { dbFail } from './errors.js'
 import { num } from './num.js'
 
 export const SCAN_COLS =
-  'id, farm_id, pond_id, line_user_id, status, sample_date, measured_at, created_at, abw_g, shrimp_per_kg, cv, n, flags, image_file_id'
+  'id, farm_id, pond_id, line_user_id, status, sample_date, measured_at, created_at, abw_g, shrimp_per_kg, cv, n, flags, image_file_id, net_id'
 
 /** A pond's history is a cycle or two long; this bounds one read. */
 const POND_SCANS_MAX = 400
@@ -24,6 +24,7 @@ export interface ScanDbRow {
   n: number | null
   flags: string[] | null
   image_file_id: string | null
+  net_id: string | null
 }
 
 export function toScan(r: ScanDbRow): ScanRow {
@@ -42,6 +43,7 @@ export function toScan(r: ScanDbRow): ScanRow {
     n: r.n,
     flags: r.flags ?? [],
     imageFileId: r.image_file_id,
+    netId: r.net_id,
   }
 }
 

@@ -55,7 +55,7 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
     farms: [...(seed.farms ?? [])],
     members: [...(seed.members ?? [])],
     ponds: (seed.ponds ?? []).map((p) => ({ ...p })),
-    nets: [...(seed.nets ?? [])],
+    nets: (seed.nets ?? []).map((n) => ({ ...n })),
     scans: [...(seed.scans ?? [])],
     cycles: (seed.cycles ?? []).map((c) => ({ ...c })),
     lineUsers: (seed.lineUsers ?? []).map((u) => ({ ...u })),
@@ -64,6 +64,7 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
     quotaDown: seed.quotaDown ?? false,
   }
   let seq = 0
+  const liveNets = (farmId: string) => state.nets.filter((n) => n.farmId === farmId && !n.archivedAt)
   const isOa = (farmId: string) => state.farms.find((f) => f.id === farmId)?.createdVia === OA_CREATED_VIA
   const newestFirst = (a: ScanRow, b: ScanRow) => (b.sampleDate ?? '').localeCompare(a.sampleDate ?? '') || b.createdAt.localeCompare(a.createdAt)
   const stockingOf = (c: MemoryCycle): CycleRow => ({ id: c.id, pondId: c.pondId, stockedOn: c.stockedOn, count: c.count, survival: c.survival })
@@ -116,10 +117,35 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
         const p = state.ponds.find((x) => x.id === pondId)
         if (p) p.netId = netId
       },
+      async moveNet(farmId, from, to) {
+        for (const p of state.ponds) if (p.farmId === farmId && p.netId === from) p.netId = to
+      },
     },
     nets: {
       async ofFarm(farmId) {
-        return state.nets.filter((n) => n.farmId === farmId && !n.archivedAt).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        return liveNets(farmId).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+      },
+      async create({ farmId, cm, createdBy, createdAt }) {
+        await tick()
+        // farm_nets_one_live_name: the name is the size.
+        if (liveNets(farmId).some((n) => n.cm === cm)) return 'name_taken'
+        const net: NetRow = { id: `net-${++seq}`, farmId, cm, createdBy, createdAt: createdAt ?? new Date().toISOString(), archivedAt: null }
+        state.nets.push(net)
+        return { ...net }
+      },
+      async setCm(farmId, netId, cm) {
+        await tick()
+        const net = liveNets(farmId).find((n) => n.id === netId)
+        if (!net) return 'not_found'
+        // The trigger fires before the unique index is checked.
+        if (state.scans.some((s) => s.netId === netId)) return 'locked'
+        if (liveNets(farmId).some((n) => n.id !== netId && n.cm === cm)) return 'name_taken'
+        net.cm = cm
+        return 'ok'
+      },
+      async archive(farmId, netId) {
+        const net = liveNets(farmId).find((n) => n.id === netId)
+        if (net) net.archivedAt = new Date().toISOString()
       },
     },
     scans: {

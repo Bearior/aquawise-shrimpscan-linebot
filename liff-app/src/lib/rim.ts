@@ -10,6 +10,16 @@
  */
 import type { NetShape, Pt } from '../api/types'
 
+/**
+ * ยอสี่เหลี่ยม is held back (Bear, 2026-10-29): the shared database keeps no
+ * ยอ shape yet, so every ยอ is round. The geometry below still handles both;
+ * only the screens that choose a shape read this.
+ */
+export const SQUARE_NET_ENABLED: boolean = false
+
+/** The shapes a person may choose, in card order. */
+export const NET_SHAPES: readonly NetShape[] = SQUARE_NET_ENABLED ? ['round', 'square'] : ['round']
+
 export interface Ellipse {
   cx: number
   cy: number

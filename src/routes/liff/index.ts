@@ -11,6 +11,7 @@ import { getDb } from '../../lib/db.js'
 import { verifyLiffIdToken } from '../../middleware/liff-auth.js'
 import { bodyErrors } from './errors.js'
 import type { GetRepos } from './handle.js'
+import { netsRouter } from './nets.js'
 import { pondsRouter } from './ponds.js'
 import { sessionRouter } from './session.js'
 
@@ -35,5 +36,6 @@ export function liffRouter(opts: LiffRouterOptions = {}): Router {
   r.use(verifyLiffIdToken, express.json({ limit: '64kb' }), bodyErrors)
   r.use(sessionRouter(getRepos))
   r.use(pondsRouter(getRepos))
+  r.use(netsRouter(getRepos))
   return r
 }

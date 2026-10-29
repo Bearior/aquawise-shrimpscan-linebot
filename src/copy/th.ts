@@ -22,4 +22,9 @@ export const TH = {
   ownerFallback: 'เจ้าของฟาร์ม',
   /** Who sent a photo, when that person is no longer in the farm. */
   someone: 'คนในฟาร์ม',
+  /** A ยอ list line (Net.use): the farm's ยอ, and a ยอ no pond uses yet. */
+  farmNet: 'ยอของฟาร์ม',
+  netNoPonds: 'ยังไม่ผูกบ่อ',
+  /** 'พี่วิชัยใส่ 20 ต.ค.' (Net.addedBy). */
+  netAddedBy: 'ใส่',
 } as const

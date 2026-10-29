@@ -71,6 +71,8 @@ export interface ScanRow {
   /** `remeasure`, `note:<text>`, `fixed:<userTag>:<oldPerKg>`. */
   flags: string[]
   imageFileId: string | null
+  /** The ยอ the photo was measured with. */
+  netId: string | null
 }
 
 /** A pond's open cycle (state setup, preparing or active). */
@@ -112,11 +114,31 @@ export interface PondsRepo {
   ofFarm(farmId: string): Promise<PondRow[]>
   /** The pond's own ยอ (`net_id`, `net_id_source 'assigned'`). */
   setNet(pondId: string, netId: string): Promise<void>
+  /** Every pond of the farm on ยอ `from` moves to ยอ `to` (a ยอ replaced by a corrected one). */
+  moveNet(farmId: string, from: string, to: string): Promise<void>
+}
+
+export interface NetCreateInput {
+  farmId: string
+  /** `farm_key`: the farm owner's LINE id. */
+  farmKey: string
+  cm: number
+  createdBy: string
+  /** Kept from the ยอ this one replaces, so a replaced farm ยอ stays the oldest. */
+  createdAt?: string
 }
 
 export interface NetsRepo {
   /** The farm's live ยอ, oldest first (the first is the farm's default). */
   ofFarm(farmId: string): Promise<NetRow[]>
+  /** `name_taken`: the farm already has a live ยอ of that size (`farm_nets_one_live_name`). */
+  create(input: NetCreateInput): Promise<NetRow | 'name_taken'>
+  /**
+   * Corrects the size in place. `locked`: a photo was measured with this ยอ
+   * (trigger `farm_nets_diameter_locked`), so its size is history.
+   */
+  setCm(farmId: string, netId: string, cm: number): Promise<'ok' | 'locked' | 'name_taken' | 'not_found'>
+  archive(farmId: string, netId: string): Promise<void>
 }
 
 export interface ScansRepo {
