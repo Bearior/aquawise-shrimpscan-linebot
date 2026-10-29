@@ -173,9 +173,10 @@ applied to an environment before turning on anything that needs it.
   the web scan's (`sizing_consume_quota` / `sizing_refund_quota`). A save
   writes the pond-day's `growth_samples` row through
   `write_photo_growth_sample`, the RPC น้องน้ำ's own scan uses.
-- Migration 211 (`shrimp_scan_farm_settings`) is on prod. Line-bot's 210
-  (`shrimp_len_px`) is not: until it is, a re-read of a measured scan shows
-  the dots and the average but no grams per shrimp.
+- On prod: migration 211 (`shrimp_scan_farm_settings`) and line-bot's 210
+  (`shrimp_len_px`, applied 2026-10-29), so a re-read keeps the grams per
+  shrimp. A database without 210 still works: the column is dropped from
+  reads and writes, and a re-read shows the dots and the average only.
 - `pnpm db:smoke` checks the database the env points at, read only: farms by
   `created_via`, the settings table, the quota RPC. It prints counts and the
   words prod or staging, never an id or the URL.

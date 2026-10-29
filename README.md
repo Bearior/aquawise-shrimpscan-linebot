@@ -64,8 +64,7 @@ docker build -t shrimpscan-line-bot . && docker run -p 8080:8080 shrimpscan-line
    invites, permissions, overview and เรื่องน่าจับตา, settings, print.
 2. Part 3: the rich menu (`setup:rich-menu`) and the วิธีใช้ and
    อากาศวันนี้ replies.
-3. Line-bot migration 210 (`shrimp_len_px`) on prod, so a re-read keeps the
-   grams per shrimp; then the staging database again instead of prod.
+3. The staging database again instead of prod (210 and 211 are on prod).
 4. Print: a server-made PDF, opened with `liff.openWindow({ external: true })`
    (the LIFF prints with `window.print()` today), and "ส่งเป็นรูป" into the chat.
 5. Chat: no photos in the chat any more (workers scan into the pond). Left:
