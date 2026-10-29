@@ -69,24 +69,37 @@ export function RequireFarm({ children }: { children?: ReactNode }) {
 
 /* ---------- toast ---------- */
 
-interface ToastValue {
-  show: (msg: string) => void
-  msg: string | null
+/** A button inside the toast (เลิกทำ). The toast stays 4 s instead of 3.2. */
+export interface ToastAction {
+  label: string
+  run: () => void
 }
-const ToastCtx = createContext<ToastValue>({ show: () => {}, msg: null })
+
+interface ToastValue {
+  show: (msg: string, action?: ToastAction) => void
+  /** Closes the toast now (after its button is used). */
+  hide: () => void
+  msg: string | null
+  action: ToastAction | null
+}
+const ToastCtx = createContext<ToastValue>({ show: () => {}, hide: () => {}, msg: null, action: null })
 
 function ToastProvider({ children }: { children: ReactNode }) {
-  const [msg, setMsg] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ msg: string; action: ToastAction | null } | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const show = useCallback((m: string) => {
-    setMsg(m)
+  const hide = useCallback(() => {
     if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => setMsg(null), 3200)
+    setToast(null)
+  }, [])
+  const show = useCallback((m: string, action?: ToastAction) => {
+    setToast({ msg: m, action: action ?? null })
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => setToast(null), action ? 4000 : 3200)
   }, [])
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current)
   }, [])
-  return <ToastCtx.Provider value={{ show, msg }}>{children}</ToastCtx.Provider>
+  return <ToastCtx.Provider value={{ show, hide, msg: toast?.msg ?? null, action: toast?.action ?? null }}>{children}</ToastCtx.Provider>
 }
 
 export function useToast(): ToastValue {

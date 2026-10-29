@@ -103,7 +103,7 @@
 .srow span{font-size:12px;color:var(--ink3)}
 .vnav{display:grid;grid-template-columns:repeat(4,1fr);background:#fff;border-top:1px solid var(--ln);padding:6px 6px 14px;flex:none}
 .vnav button{display:flex !important;flex-direction:column;align-items:center;gap:2px;font-size:11.5px;font-weight:700;color:var(--ink3);padding:6px 0 !important;border-radius:12px;text-align:center !important}
-.vnav button.on{color:var(--hero);background:var(--herot) !important}
+.vnav button.on{color:var(--hero)}
 .vnav .i{width:22px;height:22px}
 .hdr{background:var(--hero);color:#fff;padding:14px 16px 16px;display:grid;gap:2px;flex:none}
 .hdr b{font-size:20px;font-weight:800;line-height:1.3}
@@ -549,14 +549,6 @@
 .netc .ok .i{width:16px;height:16px}
 
 /* overview: to do, harvest queue chart, price card */
-.todo{background:#fff;border:2px solid var(--hero);border-radius:20px;padding:14px;display:grid}
-.todo>b{font-size:19px;font-weight:800;padding-bottom:4px}
-.td{display:flex !important;gap:12px;align-items:flex-start;padding:10px 0 !important;border-top:1px solid var(--ln) !important}
-.td .n{width:30px;height:30px;border-radius:50%;background:var(--hero);color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;flex:none}
-.td div{flex:1;display:grid;gap:2px}
-.td div b{font-size:17px;line-height:1.4}
-.td div span{font-size:15px;color:var(--ink2)}
-.td>.i{margin-top:5px;color:var(--ink3)}
 .qch{display:grid;gap:4px}
 .qbars{display:grid;grid-template-columns:repeat(14,1fr);gap:3px;height:92px}
 .qbars div{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px}

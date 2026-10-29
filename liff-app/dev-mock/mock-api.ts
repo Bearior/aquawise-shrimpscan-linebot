@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { MockError, Store, photos, type Persona } from './store'
-import type { MemberPondsPut } from '../src/api/types'
+import type { MemberPondsPut, WatchAckPut } from '../src/api/types'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PERSONAS: Persona[] = ['owner', 'worker', 'new', 'fresh']
@@ -70,6 +70,8 @@ function routes(store: Store): [string, RegExp, Handler][] {
     r('PUT', '/ponds/:id/stocking', ({ persona, body }, id) => store.saveStocking(persona, id!, b(body))),
     r('PUT', '/ponds/:id/net', ({ persona, body }, id) => store.setPondNet(persona, id!, b<{ netId: string }>(body).netId)),
     r('GET', '/overview', ({ persona }) => store.overview(persona)),
+    r('PUT', '/watch/:key/ack', ({ persona, body }, key) => store.ackWatch(persona, key!, b<WatchAckPut>(body)?.signature ?? '')),
+    r('DELETE', '/watch/:key/ack', ({ persona }, key) => store.unackWatch(persona, key!)),
     r('GET', '/today', ({ persona }) => store.today(persona)),
     r('GET', '/team/today', ({ persona }) => store.teamToday(persona)),
 

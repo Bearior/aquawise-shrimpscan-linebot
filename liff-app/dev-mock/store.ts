@@ -52,6 +52,8 @@ import type {
   TeamPond,
   TeamTodayResponse,
   TodayResponse,
+  WatchAck,
+  WatchItem,
 } from '../src/api/types'
 import { NET_CM_MAX, NET_CM_MIN } from '../src/api/types'
 import { addDays, daysBetween, fmtDay, fmtDayYear, fmtTime, pondRange } from '../src/lib/format'
@@ -212,6 +214,8 @@ interface MFarm {
   invites: MInvite[]
   notify: NotifySettings
   activity: { who: string; what: string; when: string }[]
+  /** เรื่องน่าจับตา รับทราบ, farm-wide, by item key. */
+  acks: Record<string, { signature: string; by: string; at: string }>
 }
 
 const DEFAULTS: Record<Role, Permissions> = {
@@ -331,6 +335,7 @@ function seedFarm(): MFarm {
     invites: [{ code: '7K2P9QX', role: 'worker', pondIds: ponds.filter((p) => p.zone === 'F').map((p) => p.id), createdOn: TODAY, status: 'open' }],
     notify: { photoIn: true, morningSummary: true, morningSheet: false, nearTarget: true, remindWorkers: true },
     activity: [...ACTIVITY],
+    acks: {},
   }
 
   // History: saved scans 15, 10 and 5 days back, and today for every pond scanned this morning.
@@ -432,6 +437,7 @@ function blankFarm(id: string, name: string, owner: { id: string; name: string }
     invites: [],
     notify: { photoIn: true, morningSummary: true, morningSheet: false, nearTarget: true, remindWorkers: true },
     activity: [],
+    acks: {},
   }
 }
 
@@ -758,28 +764,13 @@ export class Store {
     const ready = tiles.filter((t) => t.status === 'ready')
     const urgent = tiles.filter((t) => t.status === 'urgent')
     const missing = tiles.filter((t) => t.status === 'missing')
-    const todo: Overview['todo'] = []
-    const first = soon[0]
-    if (first) {
-      const t = tiles.find((x) => x.id === first.pondId)!
-      todo.push({
-        kind: 'harvest',
-        title: `โทรนัดห้องเย็น จับบ่อ ${first.pondCode}${t.daysToTarget === 0 ? ' วันนี้' : ` ${fmtDay(first.date)}`}`,
-        sub: `${first.perKg} ตัว/กก. · ราว ${first.tonnes} ตัน${t.caretaker ? ` · ${t.caretaker} โซน ${t.zone}` : ''}`,
-        pondId: first.pondId,
-      })
-    }
-    if (urgent.length) todo.push({ kind: 'check', title: `ดู ${urgent.length} บ่อที่โตช้าหรือแตกไซส์`, sub: urgent.map((t) => t.code).join(' · ') })
-    if (missing.length) {
-      const who = [...new Set(missing.map((t) => t.caretaker).filter(Boolean))].join(' ')
-      todo.push({ kind: 'missing', title: `ตามรูปยอ ${missing.length} บ่อที่ยังไม่ส่ง`, sub: `${missing.map((t) => t.code).join(' · ')}${who ? ` · ${who}` : ''}` })
-    }
+    const watch = this.watch(farm, tiles, soon)
     return {
       farmName: farm.name,
       today: TODAY,
       pondCount: farm.ponds.length,
       targetPerKg: farm.targetPerKg,
-      todo,
+      watch,
       tiles: {
         ready: { n: ready.length, tonnes: round1(ready.reduce((a, t) => a + tonnes(t), 0)) },
         good: { n: tiles.filter((t) => t.status === 'good').length },
@@ -795,6 +786,94 @@ export class Store {
       later: { rows: later, tonnes: sum(later) },
       beyond: [band(15, 25), band(26, null)].filter((b) => b.ponds > 0),
     }
+  }
+
+  /**
+   * เรื่องน่าจับตา: ponds to harvest in the next 3 days (one row each), the
+   * ponds not scanned yet today, then the slow or uneven ones. Today's rows
+   * come first.
+   */
+  private watch(farm: MFarm, tiles: PondTile[], soon: QueueRow[]): WatchItem[] {
+    const items: Omit<WatchItem, 'acked'>[] = []
+    /** Lower shows first: today's rows, then the coming days, then the slow ponds. */
+    const rank = new Map<string, number>()
+    for (const r of soon) {
+      const t = tiles.find((x) => x.id === r.pondId)!
+      const days = t.daysToTarget!
+      if (days > 3) continue
+      const when = days === 0 ? 'วันนี้' : days === 1 ? 'พรุ่งนี้' : fmtDay(r.date)
+      rank.set(`harvest-${t.code}`, days === 0 ? 0 : 2 + days)
+      items.push({
+        key: `harvest-${t.code}`,
+        kind: 'harvest',
+        title: `โทรนัดห้องเย็น จับบ่อ ${t.code}`,
+        chip: days === 0 ? 'วันนี้' : days === 1 ? 'พรุ่งนี้' : `อีก ${days} วัน`,
+        tone: days === 0 ? 'soon' : 'plain',
+        detail: `ถึงไซส์ **${r.perKg} ตัว/กก.** ${when} · ราว **${r.tonnes} ตัน**${t.caretaker ? ` · ${t.caretaker} ดูแลโซน ${t.zone}` : ''}`,
+        auto: null,
+        action: { label: `เปิดบ่อ ${t.code}`, to: 'pond', pondId: t.id },
+        ackable: true,
+        signature: `${r.date}:${r.perKg}`,
+      })
+    }
+    const missing = tiles.filter((t) => t.status === 'missing')
+    if (missing.length) {
+      const names = [...new Set(missing.map((t) => t.caretaker).filter((x): x is string => !!x))]
+      const who = names.length > 1 ? `${names.slice(0, -1).join(' ')} กับ${names[names.length - 1]}` : (names[0] ?? '')
+      const codes = missing.map((t) => t.code).join(' · ')
+      rank.set('missing', 1)
+      items.push({
+        key: 'missing',
+        kind: 'missing',
+        title: missing.length === 1 ? `บ่อ ${missing[0]!.code} ยังไม่ได้สแกนวันนี้` : `${missing.length} บ่อยังไม่ได้สแกนวันนี้`,
+        chip: 'วันนี้',
+        tone: 'soon',
+        detail: `**${codes}**${who ? ` · ${who} ดูแลอยู่` : ''}`,
+        auto: 'หายไปเองเมื่อสแกนแล้วค่ะ',
+        action: { label: 'ดูว่าใครสแกนแล้ว', to: 'team' },
+        ackable: false,
+        signature: codes,
+      })
+    }
+    const slow = tiles.filter((t) => t.status === 'urgent')
+    if (slow.length) {
+      const codes = slow.map((t) => t.code).join(' · ')
+      rank.set('slow', 9)
+      items.push({
+        key: 'slow',
+        kind: 'slow',
+        title: `${slow.length} บ่อโตช้าหรือแตกไซส์`,
+        chip: 'ตรวจดู',
+        tone: 'alert',
+        detail: `**${codes}** โตช้ากว่าที่ควร หรือไซส์ในบ่อไม่เสมอ`,
+        auto: null,
+        action: { label: 'ดูบ่อที่ต้องดู', to: 'urgent' },
+        ackable: true,
+        signature: codes,
+      })
+    }
+    return items
+      .sort((a, b) => rank.get(a.key)! - rank.get(b.key)!)
+      .map((i) => {
+        const a = i.ackable ? farm.acks[i.key] : undefined
+        return { ...i, acked: a && a.signature === i.signature ? { by: a.by, at: a.at } : null }
+      })
+  }
+
+  ackWatch(persona: Persona, key: string, signature: string): WatchAck {
+    const { farm, me } = this.ctx(persona)
+    this.need(me, 'farmOverview')
+    if (!signature) throw new MockError(400, 'signature_required')
+    if (!this.overview(persona).watch.some((w) => w.key === key && w.ackable)) throw new MockError(404, 'not_found')
+    const a = { signature, by: me.name, at: fmtTime(nowIso()) }
+    farm.acks[key] = a
+    return { by: a.by, at: a.at }
+  }
+
+  unackWatch(persona: Persona, key: string): void {
+    const { farm, me } = this.ctx(persona)
+    this.need(me, 'farmOverview')
+    delete farm.acks[key]
   }
 
   today(persona: Persona): TodayResponse {

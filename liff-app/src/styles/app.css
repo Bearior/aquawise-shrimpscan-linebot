@@ -479,3 +479,300 @@ body {
   border-radius: 12px;
   background: #ececf2;
 }
+
+/* Bottom bar: the active tab changes colour only, the way line-bot's bar does.
+   No tinted pill behind it. */
+.scr .vnav button.on {
+  background: none !important;
+}
+
+/* The toast's own button (เลิกทำ). */
+.toast .tm {
+  flex: 1;
+  min-width: 0;
+}
+.toast .ta {
+  flex: none;
+  color: #9cc3ff;
+  font: inherit;
+  font-weight: 800;
+  padding: 4px 2px !important;
+  background: none;
+  border: 0;
+}
+
+/* เรื่องน่าจับตา (O21), after line-bot's home v8 WatchList. Large text, as
+   the rest of this app. */
+.wl {
+  display: grid;
+  gap: 10px;
+}
+.wl-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 2px 0;
+}
+.wl-h h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.wl-h span {
+  font-size: 15px;
+  color: var(--ink3);
+}
+.wl-card {
+  background: #fff;
+  border: 1px solid var(--ln);
+  border-radius: 20px;
+  overflow: hidden;
+}
+.wl-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0ms;
+}
+.wl-fold[data-open='false'] {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0ms 300ms;
+}
+.wl-fold > div {
+  overflow: hidden;
+  min-height: 0;
+}
+.wl-fold > div > div {
+  transition: opacity 180ms ease-out 60ms;
+}
+.wl-fold[data-open='false'] > div > div {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.wl-it {
+  border-top: 1px solid var(--ln);
+  transition: background-color 160ms ease;
+}
+.wl-it.first {
+  border-top: 0;
+}
+.wl-it.open {
+  background: var(--herot);
+}
+.wl-row {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px !important;
+  text-align: left !important;
+}
+.wl-row img {
+  width: 40px;
+  height: 40px;
+  flex: none;
+}
+.wl-t {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.wl-chip {
+  flex: none;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #f4f4f8;
+  color: var(--ink3);
+}
+.wl-chip.soon {
+  background: #e2eafb;
+  color: #2d52a0;
+}
+.wl-chip.alert {
+  background: var(--warns);
+  color: #7a5b00;
+}
+.wl-row > .i {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--ink3);
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.wl-it.open .wl-row > .i {
+  transform: rotate(90deg);
+}
+.wl-more {
+  padding: 0 14px 14px 66px;
+  display: grid;
+  gap: 10px;
+}
+.wl-d,
+.wl-auto {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink2);
+}
+.wl-auto {
+  color: var(--ink3);
+}
+.wl-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.wl-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px !important;
+  border-radius: 999px;
+  border: 1px solid var(--ln2) !important;
+  background: #fff;
+  color: var(--ink2);
+  font-size: 15px;
+  font-weight: 700;
+}
+.wl-btn .i {
+  width: 16px;
+  height: 16px;
+}
+.wl-btn.blue {
+  border-color: #bfd3f3 !important;
+  color: var(--hero);
+}
+.wl-btn.ack {
+  border-color: #cfe5d8 !important;
+  color: var(--good);
+}
+.wl-btn.acked {
+  border-color: transparent !important;
+  background: var(--goods);
+  color: var(--good);
+  opacity: 1 !important;
+}
+.wl-all,
+.wl-ackh {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 14px !important;
+  border-top: 1px solid var(--ln) !important;
+  font-size: 16px;
+  font-weight: 700;
+}
+.wl-all {
+  justify-content: center;
+  color: var(--hero);
+}
+.wl-all .i {
+  width: 18px;
+  height: 18px;
+  transform: rotate(90deg);
+}
+.wl-ackh {
+  gap: 12px;
+  color: var(--ink3);
+  text-align: left !important;
+}
+.wl-ackh > .i {
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
+  transform: rotate(90deg);
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.wl-ackh.open > .i {
+  transform: rotate(-90deg);
+}
+.wl-ok {
+  width: 40px;
+  display: flex;
+  justify-content: center;
+  flex: none;
+}
+.wl-ok .i,
+.wl-empty .i {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border-radius: 50%;
+  background: var(--goods);
+  color: var(--good);
+}
+.wl-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--good);
+}
+.wl-acked {
+  padding: 0 14px 8px;
+}
+.wl-acked p {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--ink3);
+  line-height: 1.45;
+}
+.wl-ar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--ln);
+}
+.wl-ar:first-of-type {
+  border-top: 0;
+}
+.wl-ar img {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.wl-ar > span {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink2);
+  line-height: 1.35;
+}
+.wl-ar small {
+  display: block;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink3);
+  margin-top: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wl-fold,
+  .wl-fold[data-open='false'],
+  .wl-fold > div > div,
+  .wl-fold[data-open='false'] > div > div,
+  .wl-it,
+  .wl-row > .i,
+  .wl-ackh > .i {
+    transition: none;
+  }
+}

@@ -117,6 +117,24 @@ describe('the mock farm', () => {
     expect(t.people[0]!.ponds.filter((p) => !p.at).map((p) => p.pondCode)).toEqual(['E03', 'E07'])
   })
 
+  it('lists เรื่องน่าจับตา, today first, and keeps a รับทราบ only while the fact holds', () => {
+    const s = new Store()
+    const owner = s.session('owner').user.name
+    const item = (key: string) => s.overview('owner').watch.find((w) => w.key === key)!
+    expect(s.overview('owner').watch.map((w) => w.key)).toEqual(['harvest-A01', 'missing', 'harvest-A04', 'harvest-B02', 'slow'])
+    expect(item('missing')).toMatchObject({ ackable: false, action: { to: 'team' }, detail: '**E03 · E07 · F10** · บังดล กับช่างเอก ดูแลอยู่' })
+    expect(() => s.ackWatch('owner', 'missing', item('missing').signature)).toThrow(/not_found/)
+
+    expect(s.ackWatch('owner', 'slow', item('slow').signature).by).toBe(owner)
+    expect(item('slow').acked).toMatchObject({ by: owner })
+    // Acked against an older version of the fact: it stays open.
+    s.ackWatch('owner', 'harvest-A01', '2026-10-19:40')
+    expect(item('harvest-A01').acked).toBeNull()
+    s.unackWatch('owner', 'slow')
+    expect(item('slow').acked).toBeNull()
+    expect(() => s.ackWatch('worker', 'slow', item('slow').signature)).toThrow(MockError)
+  })
+
   it('gives a pond one caretaker: moving it leaves the old one', () => {
     const s = new Store()
     const all = s.memberPonds('owner', 'm-ek')

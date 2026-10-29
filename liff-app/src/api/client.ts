@@ -40,6 +40,7 @@ import type {
   Stocking,
   TeamTodayResponse,
   TodayResponse,
+  WatchAck,
 } from './types'
 
 const B = '/api/liff'
@@ -60,6 +61,9 @@ export const api = {
   saveStocking: (id: string, body: Stocking) => apiFetch<Stocking>(`${B}/ponds/${enc(id)}/stocking`, { method: 'PUT', body }),
   setPondNet: (id: string, netId: string) => apiFetch<void>(`${B}/ponds/${enc(id)}/net`, { method: 'PUT', body: { netId } }),
   overview: () => apiFetch<Overview>(`${B}/overview`),
+  ackWatch: (key: string, signature: string) =>
+    apiFetch<WatchAck>(`${B}/watch/${enc(key)}/ack`, { method: 'PUT', body: { signature } }),
+  unackWatch: (key: string) => apiFetch<void>(`${B}/watch/${enc(key)}/ack`, { method: 'DELETE' }),
   today: () => apiFetch<TodayResponse>(`${B}/today`),
   teamToday: () => apiFetch<TeamTodayResponse>(`${B}/team/today`),
 

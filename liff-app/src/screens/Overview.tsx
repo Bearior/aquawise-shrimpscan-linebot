@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 import type { Overview as OverviewData, QueueRow } from '@/api/types'
 import { Page } from '@/components/Page'
 import { Icon } from '@/components/Icon'
+import { WatchList } from '@/components/WatchList'
 import { Chip, ErrorState, InlineError, MBtn, Skeleton } from '@/components/ui'
 import { QueueChart } from '@/components/charts'
 import { fmt1, fmtQueueDay, fmtTonnes, fmtWeekday } from '@/lib/format'
@@ -29,7 +30,7 @@ function QRow({ r, today, onOpen }: { r: QueueRow; today: string; onOpen: () => 
   )
 }
 
-/** ภาพรวมฟาร์ม (O21): what to do today, the four groups, photos sent, the 14-day harvest queue. */
+/** ภาพรวมฟาร์ม (O21): เรื่องน่าจับตา, the four groups, photos sent, the 14-day harvest queue. */
 export default function Overview() {
   const navigate = useNavigate()
   const { session, setSession } = useSession()
@@ -96,26 +97,7 @@ export default function Overview() {
 
   return (
     <Page top={top} nav="overview">
-      {d.todo.length ? (
-        <div className="todo">
-          <b>ต้องทำวันนี้</b>
-          {d.todo.map((t, i) => (
-            <button
-              key={i}
-              type="button"
-              className="td"
-              onClick={() => navigate(t.kind === 'harvest' && t.pondId ? P.pond(t.pondId) : t.kind === 'missing' ? P.people : `${P.ponds}?f=urgent`)}
-            >
-              <span className="n">{i + 1}</span>
-              <div>
-                <b>{t.title}</b>
-                <span>{t.sub}</span>
-              </div>
-              <Icon n="chev" />
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <WatchList items={d.watch} />
 
       <div className="xtiles">
         {tile(

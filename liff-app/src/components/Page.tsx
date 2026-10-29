@@ -66,7 +66,7 @@ export function Page({ title, sub, back, close, step, foot, two, nav, top, over,
   const navigate = useNavigate()
   const closeLiffOrHome = useCloseLiff()
   const { session } = useSession()
-  const { msg } = useToast()
+  const { msg, action, hide } = useToast()
   // A new step slides in from the side it comes from (MO1).
   const bodyRef = useStepMotion<HTMLElement>(step ? step[0] : null)
 
@@ -126,7 +126,19 @@ export function Page({ title, sub, back, close, step, foot, two, nav, top, over,
       {msg ? (
         <div className="toast" role="status" style={nav || foot ? undefined : { bottom: 24 }}>
           <Icon n="check" />
-          {msg}
+          <span className="tm">{msg}</span>
+          {action ? (
+            <button
+              type="button"
+              className="ta"
+              onClick={() => {
+                hide()
+                action.run()
+              }}
+            >
+              {action.label}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

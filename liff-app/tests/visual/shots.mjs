@@ -93,6 +93,26 @@ async function main() {
     await page.close()
   }
 
+  // เรื่องน่าจับตา on the owner home: a row opens in place, รับทราบ folds it
+  // away with a เลิกทำ toast, the footer keeps who and when.
+  if (!ONLY || ONLY === 'watch') {
+    const page = await ctx.newPage()
+    watch(page, 'watch')
+    await page.goto(withPersona('/liff/app', 'owner'))
+    await settle(page)
+    await page.getByTestId('watch-row').first().click()
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: path.join(OUT, 'watch-1-open.png'), fullPage: true })
+    await page.getByTestId('watch-ack').first().click()
+    await page.waitForTimeout(1000)
+    await page.screenshot({ path: path.join(OUT, 'watch-2-acked.png'), fullPage: true })
+    await page.getByTestId('watch-acked-toggle').click()
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: path.join(OUT, 'watch-3-footer.png'), fullPage: true })
+    console.log('shot watch-1..3')
+    await page.close()
+  }
+
   // The scan itself, end to end (แบบ 2): owner on F10, its ยอ, the fixture photo, น้ำ's rim, measure.
   if (!ONLY || ONLY === 'flow') {
     const page = await ctx.newPage()

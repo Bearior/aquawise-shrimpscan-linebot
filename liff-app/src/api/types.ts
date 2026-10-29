@@ -400,12 +400,51 @@ export interface QueueRow {
   tonnes: number
 }
 
+/**
+ * One เรื่องน่าจับตา row (O21), the way line-bot's home v8 has it. The server
+ * decides which items exist, their order, their words, and whether รับทราบ
+ * applies. An item that leaves by being done (a pond not scanned yet) has no
+ * รับทราบ; it goes when the pond is scanned.
+ */
+export interface WatchItem {
+  /** Stable for one fact: `harvest-F07`, `slow`, `missing`. */
+  key: string
+  kind: 'harvest' | 'slow' | 'missing'
+  title: string
+  /** The when-chip: วันนี้, พรุ่งนี้, อีก 3 วัน, ตรวจดู. */
+  chip: string
+  /** soon = blue, alert = amber, plain = grey. */
+  tone: 'soon' | 'alert' | 'plain'
+  /** One or two lines; `**bold**` marks the numbers. */
+  detail: string
+  /** "หายไปเองเมื่อ…" for an item that leaves by being done, else null. */
+  auto: string | null
+  /** The blue button: open the pond, the ต้องดู list, or who scanned today. */
+  action: { label: string; to: 'pond' | 'urgent' | 'team'; pondId?: string } | null
+  ackable: boolean
+  /** Changes when the fact changes, so an old รับทราบ never hides a new fact. */
+  signature: string
+  /** Farm-wide: who said รับทราบ and when (HH:MM). Null while it is open. */
+  acked: WatchAck | null
+}
+
+export interface WatchAck {
+  by: string
+  at: string
+}
+
+/** PUT /watch/:key/ack */
+export interface WatchAckPut {
+  signature: string
+}
+
 export interface Overview {
   farmName: string
   today: string
   pondCount: number
   targetPerKg: number
-  todo: { kind: 'harvest' | 'check' | 'missing'; title: string; sub: string; pondId?: string }[]
+  /** เรื่องน่าจับตา, in the order to show them, acknowledged ones included. */
+  watch: WatchItem[]
   tiles: {
     ready: { n: number; tonnes: number }
     good: { n: number }
