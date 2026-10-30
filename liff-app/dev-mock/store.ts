@@ -49,6 +49,7 @@ import type {
   SettingsResponse,
   StartRequest,
   Stocking,
+  TeamDay,
   TeamPond,
   TeamTodayResponse,
   TodayResponse,
@@ -216,6 +217,8 @@ interface MFarm {
   activity: { who: string; what: string; when: string }[]
   /** เรื่องน่าจับตา รับทราบ, farm-wide, by item key. */
   acks: Record<string, { signature: string; by: string; at: string }>
+  /** สแกนวันนี้'s grid before the saved history starts: ponds scanned each past day. */
+  pastDone: Record<string, number>
 }
 
 const DEFAULTS: Record<Role, Permissions> = {
@@ -336,6 +339,7 @@ function seedFarm(): MFarm {
     notify: { photoIn: true, morningSummary: true, morningSheet: false, nearTarget: true, remindWorkers: true },
     activity: [...ACTIVITY],
     acks: {},
+    pastDone: pastDone(ponds.length),
   }
 
   // History: saved scans 15, 10 and 5 days back, and today for every pond scanned this morning.
@@ -438,7 +442,25 @@ function blankFarm(id: string, name: string, owner: { id: string; name: string }
     notify: { photoIn: true, morningSummary: true, morningSheet: false, nearTarget: true, remindWorkers: true },
     activity: [],
     acks: {},
+    pastDone: {},
   }
+}
+
+/**
+ * Thirteen weeks of mornings for the seeded farm: most days nearly every pond,
+ * a slow start the first fortnight, and a few short days (rain, a sick
+ * worker) so the grid has something to say.
+ */
+function pastDone(total: number): Record<string, number> {
+  const r = rng('past-done')
+  const out: Record<string, number> = {}
+  for (let back = 90; back >= 1; back--) {
+    const x = r()
+    const share = back > 76 ? (x < 0.4 ? 0 : 0.2 + x * 0.4) : x < 0.05 ? 0.15 : x < 0.18 ? 0.6 + x : 0.9 + x * 0.1
+    const n = Math.min(total, Math.round(total * share))
+    if (n > 0) out[addDays(TODAY, -back)] = n
+  }
+  return out
 }
 
 /* ---------- the store ---------- */
@@ -545,6 +567,13 @@ export class Store {
     }
   }
 
+  /** รหัสเข้าร่วม: the mock takes any code but WRONG, so the refusal can be seen. */
+  gate(code: string): { ok: true } {
+    if (!code.trim()) throw new MockError(400, 'bad_request')
+    if (code.trim().toUpperCase() === 'WRONG') throw new MockError(404, 'invalid_code')
+    return { ok: true }
+  }
+
   start(persona: Persona, body: StartRequest): Session {
     const who = this.people[persona]
     if (who.farmId) return this.session(persona)
@@ -556,6 +585,7 @@ export class Store {
     } else {
       const name = body.name.trim()
       if (!name || !body.ponds.length) throw new MockError(400, 'bad_request')
+      if (body.code !== undefined && body.code.trim().toUpperCase() === 'WRONG') throw new MockError(403, 'code_required')
       const ponds = body.ponds.map((code) => ({ code, zone: /^[A-Za-z]+/.exec(code)?.[0]?.toUpperCase() ?? '1' }))
       farm = blankFarm(this.nextId('farm'), name, { id: who.memberId, name: who.name }, ponds)
     }
@@ -1225,7 +1255,25 @@ export class Store {
       people,
       nobody: all.filter((x) => !held.has(x.pondId)),
       remindAt: farm.notify.remindWorkers ? '10:00' : null,
+      history: this.history(farm),
     }
+  }
+
+  /** Ponds scanned each day of the last 13 weeks: the saved scans, over the seeded mornings before them. */
+  private history(farm: MFarm): TeamDay[] {
+    const since = addDays(TODAY, -(13 * 7 - 1))
+    const byDay = new Map<string, Set<string>>()
+    for (const s of farm.scans) {
+      if (!s.savedAt) continue
+      const d = dayOf(s.savedAt)
+      if (d < since) continue
+      const set = byDay.get(d) ?? new Set<string>()
+      set.add(s.pondId)
+      byDay.set(d, set)
+    }
+    const days = new Map<string, number>(Object.entries(farm.pastDone).filter(([d]) => d >= since))
+    for (const [d, set] of byDay) days.set(d, Math.max(days.get(d) ?? 0, set.size))
+    return [...days.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, done]) => ({ date, done }))
   }
 
   private pondsView(farm: MFarm, m: MMember, me: MMember): MemberPondsResponse {

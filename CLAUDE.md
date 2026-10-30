@@ -180,10 +180,15 @@ applied to an environment before turning on anything that needs it.
   A person whose farm came from น้องน้ำ (or who has any footing there) gets
   403 `use_nong_nam` on every farm route and nothing is written for them.
 - The server reads `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-  `SIZING_SERVICE_URL`, `SIZING_SERVICE_SECRET` and `SCAN_DAILY_LIMIT`
-  (default 20). Without the first two every database route answers 503
-  `db_not_configured`; without the sizing pair, measure answers 503
-  `measure_not_configured`.
+  `SIZING_SERVICE_URL`, `SIZING_SERVICE_SECRET`, `SCAN_DAILY_LIMIT`
+  (default 20) and `BETA_ACCESS_CODE`. Without the first two every database
+  route answers 503 `db_not_configured`; without the sizing pair, measure
+  answers 503 `measure_not_configured`.
+- **รหัสเข้าร่วม** (`src/domain/gate.ts`): a new owner types a code before
+  making a farm (`POST /gate`, then sent again with `/start`, which answers
+  403 `code_required` without it). Unset `BETA_ACCESS_CODE` = open, like
+  line-bot's beta gate. Nothing is stamped on `line_users`: that row is
+  shared with น้องน้ำ, whose own gate would open too.
 - Data: the repos in `src/data/supabase/` (one per table), with
   `src/data/memory.ts` as their in-memory twin for tests. A scan is a
   `sizing_measurements` row; its photo is in the `record-images` bucket under

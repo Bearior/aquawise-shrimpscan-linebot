@@ -1,5 +1,6 @@
 /**
- * GET /session, POST /start (O2 to O6) and PATCH /farm (the target size).
+ * GET /session, POST /gate (รหัสเข้าร่วม), POST /start (O2 to O6) and
+ * PATCH /farm (the target size).
  *
  * A new person makes an OA farm by naming it and its ponds. Taking a farm over
  * from น้องน้ำ (`useFarmId`) is refused by the guard while this OA reads the
@@ -12,6 +13,7 @@ import { TH } from '../../copy/th.js'
 import { ApiError, requireFarm, resolveContext, type Ctx } from '../../data/context.js'
 import type { Repos } from '../../data/types.js'
 import { bangkokDay, scanDailyLimit, TARGET_CHOICES, zoneOf } from '../../domain/farm.js'
+import { accessCode, isValidCode } from '../../domain/gate.js'
 import { effective } from '../../domain/permissions.js'
 import { envName } from '../liff-me.js'
 import { handle, type GetRepos } from './handle.js'
@@ -88,12 +90,25 @@ export function sessionRouter(getRepos: GetRepos): Router {
 
   r.get('/session', handle(getRepos, ({ req, repos, ctx }) => sessionFor(repos, ctx, req.lineDisplayName)))
 
+  // Checks the code only; nothing is written (src/domain/gate.ts says why).
+  r.post(
+    '/gate',
+    handle(getRepos, async ({ req, ctx }) => {
+      if (ctx.blocked) throw new ApiError(403, 'use_nong_nam')
+      const code = (req.body as { code?: unknown } | undefined)?.code
+      if (typeof code !== 'string' || !code.trim()) throw new ApiError(400, 'bad_request')
+      if (!isValidCode(code)) throw new ApiError(404, 'invalid_code')
+      return { ok: true }
+    }),
+  )
+
   r.post(
     '/start',
     handle(getRepos, async ({ req, repos, ctx }) => {
       if (ctx.blocked) throw new ApiError(403, 'use_nong_nam')
       if (ctx.farm) return sessionFor(repos, ctx, req.lineDisplayName)
       const body = parseStart(req.body)
+      if (accessCode() !== null && !isValidCode((req.body as { code?: unknown }).code)) throw new ApiError(403, 'code_required')
       const lineUserId = req.lineUserId!
       const done = await oneAtATime(`start:${lineUserId}`, async () => {
         // Read again inside the lock: a start that finished meanwhile made the farm.

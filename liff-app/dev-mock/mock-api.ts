@@ -59,6 +59,7 @@ function routes(store: Store): [string, RegExp, Handler][] {
   const b = <T>(x: unknown) => x as T
   return [
     r('GET', '/session', ({ persona }) => store.session(persona)),
+    r('POST', '/gate', ({ body }) => store.gate(String(b<{ code?: unknown }>(body)?.code ?? ''))),
     r('POST', '/start', ({ persona, body }) => store.start(persona, b(body))),
     r('PATCH', '/farm', ({ persona, body }) => store.setTarget(persona, b<{ targetPerKg: number }>(body).targetPerKg)),
     r('GET', '/me', ({ persona }) => store.me(persona)),

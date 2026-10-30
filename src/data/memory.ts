@@ -238,6 +238,11 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
       async savedOfFarm(farmId, sinceDay) {
         return state.scans.filter((s) => s.farmId === farmId && s.sampleDate !== null && s.sampleDate >= sinceDay).sort(newestFirst)
       },
+      async scanDays(farmId, sinceDay) {
+        return state.scans
+          .filter((s) => s.farmId === farmId && s.sampleDate !== null && s.sampleDate >= sinceDay)
+          .map((s) => ({ pondId: s.pondId, sampleDate: s.sampleDate! }))
+      },
       async savedOfPond(pondId) {
         return state.scans.filter((s) => s.pondId === pondId && s.sampleDate !== null).sort(newestFirst)
       },

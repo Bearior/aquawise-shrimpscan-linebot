@@ -39,4 +39,4 @@ export const ERR = {
   retry: 'ลองใหม่',
 } as const
 
-export const LOADING = 'น้ำกำลังเปิดให้ค่ะ'
+export const LOADING = 'กำลังโหลด'

@@ -17,6 +17,7 @@ import type {
   QueueRow,
   TeamPerson,
   TeamPond,
+  TeamDay,
   TeamTodayResponse,
   TodayResponse,
   WatchAck,
@@ -181,6 +182,21 @@ function myPondIds(view: FarmView): Set<string> {
 
 const savedAt = (s: ScanRow) => s.measuredAt ?? s.createdAt
 
+/** สแกนวันนี้'s grid looks back this many weeks. */
+const HISTORY_WEEKS = 13
+
+/** Ponds of the farm scanned each day since `since`, oldest first; a day with none is left out. */
+export function scanDays(saved: { pondId: string; sampleDate: string | null }[], pondIds: Set<string>, since: string): TeamDay[] {
+  const byDay = new Map<string, Set<string>>()
+  for (const s of saved) {
+    if (!s.sampleDate || s.sampleDate < since || !pondIds.has(s.pondId)) continue
+    const set = byDay.get(s.sampleDate) ?? new Set<string>()
+    set.add(s.pondId)
+    byDay.set(s.sampleDate, set)
+  }
+  return [...byDay.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, set]) => ({ date, done: set.size }))
+}
+
 export function overviewRouter(getRepos: GetRepos): Router {
   const r = Router()
 
@@ -265,7 +281,12 @@ export function overviewRouter(getRepos: GetRepos): Router {
       const { farm, me } = requireFarm(ctx)
       need(me, 'farmOverview')
       const view = await farmView(repos, farm, me)
-      const [today, settings] = await Promise.all([savedTodayByPond(repos, farm.id, view.today), repos.settings.read(farm.id)])
+      const since = addDays(view.today, -(HISTORY_WEEKS * 7 - 1))
+      const [today, settings, days] = await Promise.all([
+        savedTodayByPond(repos, farm.id, view.today),
+        repos.settings.read(farm.id),
+        repos.scans.scanDays(farm.id, since),
+      ])
       const pondRow = (p: { id: string; code: string }): TeamPond => {
         const s = today.get(p.id)
         return { pondId: p.id, pondCode: p.code, at: s ? savedAt(s) : null, by: s ? nameOf(view.members, s.lineUserId) : null }
@@ -299,6 +320,7 @@ export function overviewRouter(getRepos: GetRepos): Router {
         people,
         nobody: all.filter((x) => !held.has(x.pondId)),
         remindAt: settings.notify.remindWorkers ? REMIND_AT : null,
+        history: scanDays(days, new Set(view.ponds.map((p) => p.id)), since),
       }
     }),
   )

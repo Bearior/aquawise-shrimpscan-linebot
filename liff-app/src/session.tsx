@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 import type { Session } from '@/api/types'
 import { useApi } from '@/lib/use-api'
 import { ErrorState } from '@/components/ui'
+import { LogoLoader } from '@/components/LogoLoader'
 import { LOADING } from '@/copy/th'
 import { P } from '@/routes'
 
@@ -22,13 +23,13 @@ export function useSession(): SessionValue {
   return v
 }
 
-/** The one screen shown while something boots. */
+/** The one screen shown while something boots: the AquaWise logo breathing, as in น้องน้ำ. */
 export function BootScreen({ label = LOADING }: { label?: string }) {
   return (
     <div className="scr liff xl">
-      <div className="state" aria-busy="true">
-        <span className="nn av-nn breathe" aria-hidden="true" />
-        <span>{label}</span>
+      <div className="state boot" role="status" aria-busy="true">
+        <LogoLoader />
+        <span className="vh">{label}</span>
       </div>
     </div>
   )

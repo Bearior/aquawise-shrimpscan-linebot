@@ -4,6 +4,10 @@ import type { ScanPatch, ScanRow, ScansRepo } from '../types.js'
 import { dbFail, isUniqueViolation, type PgError } from './errors.js'
 import { num } from './num.js'
 
+/** สแกนวันนี้'s grid: rows a page, and a ceiling so a runaway farm cannot loop. */
+const SCAN_DAYS_PAGE = 1000
+const SCAN_DAYS_MAX = 20000
+
 const BASE_COLS =
   'id, farm_id, pond_id, line_user_id, status, sample_date, measured_at, created_at, abw_g, abw_lo_g, abw_hi_g, shrimp_per_kg, cv, n, flags, ' +
   'image_file_id, net_id, rim_ellipse, ref_diameter_cm, rim_radius_px, canvas_px, shrimp_xy, sam3_calls, sam3_http_attempts'
@@ -149,6 +153,26 @@ export function supabaseScans(db: SupabaseClient): ScansRepo {
       )
       if (error) throw dbFail('sizing_measurements.savedOfFarm', error)
       return rows(data)
+    },
+    async scanDays(farmId, sinceDay) {
+      // Two small columns, read a page at a time: PostgREST hands back at most
+      // 1000 rows a request, and 60 ponds over 13 weeks is more than that.
+      const out: { pondId: string; sampleDate: string }[] = []
+      for (let from = 0; from < SCAN_DAYS_MAX; from += SCAN_DAYS_PAGE) {
+        const { data, error } = await db
+          .from('sizing_measurements')
+          .select('id, pond_id, sample_date')
+          .eq('farm_id', farmId)
+          .gte('sample_date', sinceDay)
+          .order('sample_date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, from + SCAN_DAYS_PAGE - 1)
+        if (error) throw dbFail('sizing_measurements.scanDays', error)
+        const page = (data ?? []) as { pond_id: string; sample_date: string }[]
+        for (const r of page) out.push({ pondId: r.pond_id, sampleDate: r.sample_date })
+        if (page.length < SCAN_DAYS_PAGE) break
+      }
+      return out
     },
     async savedOfPond(pondId) {
       const { data, error } = await withCols((c) =>

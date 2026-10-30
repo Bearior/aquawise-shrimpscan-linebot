@@ -4,16 +4,20 @@ import { api } from '@/api/client'
 import type { Member } from '@/api/types'
 import { Page, Sheet } from '@/components/Page'
 import { Icon } from '@/components/Icon'
+import { Ava } from '@/components/avatar'
 import { Btn, ErrorState, InlineError, Skeleton } from '@/components/ui'
-import { NamBubble, PeopleHead, PersonRow, spacedCode } from '@/components/people'
+import { RoleBadge, spacedCode } from '@/components/people'
 import { ROLE_LABEL } from '@/copy/th'
 import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
 import { useSession, useToast } from '@/session'
 
 /**
- * คนในฟาร์ม (O7, O7a, O10): the same parts as คนในฟาร์ม of น้องน้ำ on staging,
- * at large size. The gear opens its panel under the row, not a new page.
+ * คนในฟาร์ม (O7, O7a, O10). A tab, so no back arrow (Bear, round 2): the
+ * title and the count in the plain bar, a yellow line when a zone has nobody,
+ * everyone in one list with their circle, เชิญคนเพิ่ม under it, then the
+ * invites still open and what happened lately. The gear opens its panel under
+ * the row, not a new page.
  */
 export default function People() {
   const navigate = useNavigate()
@@ -26,11 +30,9 @@ export default function People() {
   const [error, setError] = useState<unknown>(null)
   const owner = session.role === 'owner'
 
-  const head = (count?: string) => <PeopleHead title="คนในฟาร์ม" count={count} onBack={() => navigate(P.overview)} />
-
   if (!r.data) {
     return (
-      <Page top={head()} nav="people">
+      <Page title="คนในฟาร์ม" nav="people">
         {r.error ? <ErrorState error={r.error} onRetry={r.reload} /> : <Skeleton rows={[70, 100, 100, 100]} />}
       </Page>
     )
@@ -53,12 +55,12 @@ export default function People() {
     }
   }
 
-  const count = `${d.members.length} คน${d.invites.length ? ` · รอ ${d.invites.length}` : ''}`
-  const uncovered = d.uncoveredZones.length ? ` · โซน ${d.uncoveredZones.join(' ')} ยังไม่มีคนดูแลนะคะ` : ''
+  const count = `${d.members.length} คน${d.invites.length ? ` · รอตอบรับ ${d.invites.length}` : ''}`
 
   return (
     <Page
-      top={head(count)}
+      title="คนในฟาร์ม"
+      sub={count}
       nav="people"
       over={
         remove ? (
@@ -76,16 +78,40 @@ export default function People() {
         ) : null
       }
     >
-      <NamBubble>คนในฟาร์มและคำเชิญที่ค้างอยู่ จัดการได้ที่นี่เลยค่ะ{uncovered}</NamBubble>
-      <div style={{ display: 'grid', gap: 8 }}>
+      {d.uncoveredZones.length ? (
+        <div className="pp-warn">
+          <Icon n="warn" />
+          <div>
+            <b>โซน {d.uncoveredZones.join(' ')} ยังไม่มีคนดูแล</b>
+            {owner ? <span>แตะเฟืองที่ชื่อคน แล้วเลือก บ่อที่ดูแล หรือเชิญคนใหม่มาดูแลค่ะ</span> : null}
+          </div>
+        </div>
+      ) : null}
+      <div className="pp-list">
         {d.members.map((m) => {
           const canGear = owner && m.role !== 'owner'
           const other = m.role === 'worker' ? 'manager' : 'worker'
+          const on = gear === m.id
           return (
-            <div key={m.id} style={{ display: 'grid', gap: 8 }}>
-              <PersonRow m={m} onGear={canGear ? () => setGear(gear === m.id ? null : m.id) : undefined} />
-              {gear === m.id ? (
-                <div className="gp">
+            <div key={m.id} className={`pp-item${on ? ' on' : ''}`}>
+              <div className="pp-row">
+                <Ava name={m.name} size={46} />
+                <div className="tx">
+                  <div className="nm">
+                    <b>{m.name}</b>
+                    <RoleBadge role={m.role} />
+                  </div>
+                  <span>{m.scope}</span>
+                  <em>{m.joined}</em>
+                </div>
+                {canGear ? (
+                  <button type="button" className="pp-gear" aria-expanded={on} onClick={() => setGear(on ? null : m.id)} aria-label={`แก้ไข ${m.name}`}>
+                    <Icon n="gear" />
+                  </button>
+                ) : null}
+              </div>
+              {on ? (
+                <div className="gp w-fade">
                   <button type="button" onClick={() => navigate(P.memberPonds(m.id))}>
                     บ่อที่ดูแล
                   </button>
@@ -108,16 +134,22 @@ export default function People() {
         })}
       </div>
       {!remove ? <InlineError error={error} /> : null}
+      {owner ? (
+        <button type="button" className="pp-cta" onClick={() => navigate(P.invite)}>
+          <Icon n="plus" />
+          เชิญคนเพิ่ม
+        </button>
+      ) : null}
       {d.invites.length ? (
         <>
-          <b className="eyb">คำเชิญที่ยังไม่ตอบรับ · {d.invites.length}</b>
+          <h3 className="pp-sec">คำเชิญที่ยังไม่ตอบรับ · {d.invites.length}</h3>
           {d.invites.map((inv) => (
             <div className="pinv" key={inv.code}>
               <span className="si">
                 <Icon n="send" />
               </span>
               <div className="tx">
-                <b>{spacedCode(inv.code)}</b>
+                <b className="mono">{spacedCode(inv.code)}</b>
                 <span>
                   เหลือ {inv.daysLeft} วัน · {ROLE_LABEL[inv.role]} · {inv.pondsLabel}
                 </span>
@@ -131,15 +163,9 @@ export default function People() {
           ))}
         </>
       ) : null}
-      {owner ? (
-        <button type="button" className="icta" onClick={() => navigate(P.invite)}>
-          <Icon n="plus" />
-          เชิญคนเพิ่ม
-        </button>
-      ) : null}
       {d.activity.length ? (
         <>
-          <b className="eyb">กิจกรรมล่าสุด</b>
+          <h3 className="pp-sec">ล่าสุดในฟาร์ม</h3>
           <div className="actv">
             {d.activity.map((a, i) => (
               <div key={i}>

@@ -4,124 +4,179 @@ import { api } from '@/api/client'
 import type { TeamPerson } from '@/api/types'
 import { Page } from '@/components/Page'
 import { Icon } from '@/components/Icon'
-import { ErrorState, MBtn, Pill, Skeleton, Tip } from '@/components/ui'
+import { Ava } from '@/components/avatar'
+import { ScanGrid } from '@/components/scan-grid'
+import { ErrorState, MBtn, Skeleton, Tip } from '@/components/ui'
 import { ROLE_LABEL, WORKER } from '@/copy/th'
 import { fmtTime, fmtWeekday } from '@/lib/format'
 import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
 import { useSession } from '@/session'
 
-function status(x: TeamPerson) {
-  if (x.done === x.total) return <Pill k="ok">ครบแล้ว</Pill>
-  if (x.done === 0) return <Pill k="bd">ยังไม่เริ่ม</Pill>
-  return <Pill k="wn">ขาด {x.total - x.done} บ่อ</Pill>
-}
-
-function when(x: TeamPerson): string {
-  if (!x.lastAt) return 'วันนี้ยังไม่ได้สแกน'
-  return x.done === x.total ? `เสร็จ ${fmtTime(x.lastAt)}` : `ล่าสุด ${fmtTime(x.lastAt)}`
+/** Every pond a person looks after: scanned ones with the time (or who scanned for them), the rest red. */
+function Squares({ x, onPond }: { x: TeamPerson; onPond: (id: string) => void }) {
+  return (
+    <div className="tm-sq" role="list" aria-label={`บ่อที่${x.name}ดูแล`}>
+      {x.ponds.map((p) =>
+        p.at ? (
+          <button key={p.pondId} type="button" role="listitem" className="d" onClick={() => onPond(p.pondId)} aria-label={`${p.pondCode} สแกนแล้ว ${fmtTime(p.at)}`}>
+            <span className="mono">{p.pondCode}</span>
+            <small>{p.by && p.by !== x.name ? p.by : fmtTime(p.at)}</small>
+          </button>
+        ) : (
+          <button key={p.pondId} type="button" role="listitem" className="x" onClick={() => onPond(p.pondId)} aria-label={`${p.pondCode} ยังไม่สแกน`}>
+            <Icon n="cam" />
+            <span className="mono">{p.pondCode}</span>
+          </button>
+        ),
+      )}
+    </div>
+  )
 }
 
 /**
- * ใครสแกนแล้ววันนี้ (O39): every person who looks after ponds, against their
- * own ponds, the ones with ponds left first. A pond tile opens the pond.
+ * ใครสแกนแล้ววันนี้ (O39). The head is แบบ A of the redesign
+ * (docs/shrimpscan-ponds-team-redesign) with the ring swapped for the farm's
+ * last 13 weeks (Bear: like GitHub's activity, line-bot's graph). Under it,
+ * แบบ B: a card for each person with ponds left, the missing ponds as big
+ * red buttons straight to the pond; the people who finished as short green
+ * rows that open to their ponds.
  */
 export default function TeamToday() {
   const navigate = useNavigate()
   const { session } = useSession()
   const r = useApi(() => api.teamToday())
-  const [open, setOpen] = useState<string | null>(null)
+  const [open, setOpen] = useState<Set<string>>(new Set())
   const owner = session.role === 'owner'
   const sub = fmtWeekday(session.today)
 
   if (!r.data) {
     return (
       <Page title="สแกนวันนี้" sub={sub} nav="team">
-        {r.error ? <ErrorState error={r.error} onRetry={r.reload} /> : <Skeleton rows={[60, 140, 140, 140]} />}
+        {r.error ? <ErrorState error={r.error} onRetry={r.reload} /> : <Skeleton rows={[230, 150, 150, 64]} />}
       </Page>
     )
   }
   const d = r.data
-  const pct = d.total ? (d.done / d.total) * 100 : 0
-  const behind = d.people.filter((x) => x.done < x.total).length
+  const behind = d.people.filter((x) => x.done < x.total)
+  const finished = d.people.filter((x) => x.done === x.total)
+  const toggle = (id: string) =>
+    setOpen((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  const toPond = (id: string) => navigate(P.pond(id))
+  const change = (x: TeamPerson) =>
+    owner ? (
+      <MBtn icon="swap" onClick={() => navigate(`${P.memberPonds(x.memberId)}?from=team`)}>
+        เปลี่ยนบ่อที่ดูแล
+      </MBtn>
+    ) : null
 
   return (
     <Page title="สแกนวันนี้" sub={sub} nav="team">
-      <div className="vc xprog">
-        <div className="pl">
-          <span>สแกนแล้วทั้งฟาร์ม</span>
-          <b>
-            {d.done}/{d.total}
+      <section className="tm-head" aria-label="สแกนแล้วทั้งฟาร์ม">
+        <div className="tm-top">
+          <div className="tm-t">
+            <b>สแกนแล้วทั้งฟาร์ม</b>
+            <span>{behind.length ? `ยังไม่ครบ ${behind.length} คน` : d.done >= d.total ? 'ครบทุกบ่อแล้ว' : `ยังไม่สแกน ${d.total - d.done} บ่อ`}</span>
+          </div>
+          <b className="tm-n mono">
+            {d.done}
+            <small>/{d.total}</small>
           </b>
         </div>
-        <div className="pt">
-          <i style={{ width: `${pct.toFixed(1)}%` }} />
-        </div>
-        <span className="l5 mut">
-          {behind ? `ยังสแกนไม่ครบ ${behind} คน` : 'ทุกคนสแกนครบแล้ว'}
-          {d.remindAt && behind ? ` · ${d.remindAt} น้ำเตือนคนที่ยังขาดให้ค่ะ` : ''}
-        </span>
-      </div>
+        {d.remindAt && behind.length ? (
+          <span className="tm-bell">
+            <Icon n="bell" />
+            {d.remindAt} น้ำจะเตือนคนที่ยังขาดให้ค่ะ
+          </span>
+        ) : null}
+        <ScanGrid history={d.history} total={d.total} today={d.today} />
+      </section>
 
-      {d.people.map((x) => {
-        const left = x.ponds.filter((p) => !p.at)
-        const isOpen = open === x.memberId
+      {behind.map((x) => {
+        const miss = x.ponds.filter((p) => !p.at)
+        const isOpen = open.has(x.memberId)
         return (
-          <div className="vc" key={x.memberId} style={{ display: 'grid', gap: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-              <div style={{ display: 'grid', gap: 2 }}>
-                <b className="l2">{x.name}</b>
-                <span className="l5 mut">
-                  {ROLE_LABEL[x.role]} · ดูแล {x.pondsLabel} · {when(x)}
+          <div className="tm-pc" key={x.memberId}>
+            <div className="tm-pch">
+              <Ava name={x.name} size={52} />
+              <div className="tx">
+                <b>{x.name}</b>
+                <span>
+                  {ROLE_LABEL[x.role]} · {x.pondsLabel}
+                  {x.lastAt ? ` · ล่าสุด ${fmtTime(x.lastAt)}` : ' · ยังไม่เริ่ม'}
                 </span>
               </div>
-              {status(x)}
+              <b className="n mono">
+                {x.done}
+                <small>/{x.total}</small>
+              </b>
             </div>
-            <div className="xprog">
-              <div className="pl">
-                <span>สแกนแล้ว</span>
-                <b>
-                  {x.done}/{x.total}
-                </b>
-              </div>
-              <div className="pt">
-                <i style={{ width: `${x.total ? ((x.done / x.total) * 100).toFixed(1) : 0}%` }} />
-              </div>
-              {left.length ? (
-                <span className="miss">
-                  <Icon n="warn" />
-                  ยังไม่สแกน {left.map((p) => p.pondCode).join(' ')}
-                </span>
-              ) : null}
+            <div className="tm-miss">
+              <span>ยังไม่สแกน {miss.length} บ่อ</span>
+              {miss.map((p) => (
+                <button key={p.pondId} type="button" className="tm-chip" onClick={() => toPond(p.pondId)}>
+                  <Icon n="cam" />
+                  {p.pondCode}
+                </button>
+              ))}
             </div>
+            <button type="button" className="tm-lnk" aria-expanded={isOpen} onClick={() => toggle(x.memberId)}>
+              {isOpen ? 'ซ่อนบ่อ' : 'ดูทุกบ่อ'}
+              <Icon n={isOpen ? 'up' : 'down'} />
+            </button>
             {isOpen ? (
-              <div className="pg w-fade" role="list" aria-label={`บ่อที่${x.name}ดูแล`}>
-                {x.ponds.map((p) => (
-                  <button key={p.pondId} type="button" role="listitem" className={`pd ${p.at ? 'g' : 'm'}`} onClick={() => navigate(P.pond(p.pondId))}>
-                    <b>{p.pondCode}</b>
-                    {p.at ? (p.by && p.by !== x.name ? `${p.by}สแกน` : fmtTime(p.at)) : 'ยังไม่สแกน'}
-                  </button>
-                ))}
+              <div className="tm-more w-fade">
+                <Squares x={x} onPond={toPond} />
+                {change(x)}
               </div>
             ) : null}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <MBtn icon={isOpen ? 'up' : 'grid'} onClick={() => setOpen(isOpen ? null : x.memberId)}>
-                {isOpen ? 'ซ่อนบ่อ' : 'ดูทุกบ่อ'}
-              </MBtn>
-              {owner ? (
-                <MBtn icon="list" onClick={() => navigate(`${P.memberPonds(x.memberId)}?from=team`)}>
-                  เปลี่ยนบ่อที่ดูแล
-                </MBtn>
-              ) : null}
-            </div>
           </div>
         )
       })}
 
+      {finished.length ? (
+        <>
+          <h3 className="tm-sec">สแกนครบแล้ว</h3>
+          <div className="tm-fin">
+            {finished.map((x) => {
+              const isOpen = open.has(x.memberId)
+              return (
+                <div className="tm-fr" key={x.memberId}>
+                  <button type="button" aria-expanded={isOpen} onClick={() => toggle(x.memberId)}>
+                    <span className="ck">
+                      <Icon n="check" />
+                    </span>
+                    <span className="tx">
+                      <b>{x.name}</b>
+                      <span className="mono">
+                        {x.done}/{x.total}
+                      </span>
+                      {x.lastAt ? <em>เสร็จ {fmtTime(x.lastAt)}</em> : null}
+                    </span>
+                    <Icon n="chev" className={isOpen ? 'turn' : undefined} />
+                  </button>
+                  {isOpen ? (
+                    <div className="tm-more w-fade">
+                      <Squares x={x} onPond={toPond} />
+                      {change(x)}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      ) : null}
+
       {d.nobody.length ? (
-        <div className="vc" style={{ display: 'grid', gap: 8 }}>
-          <b className="l3">ยังไม่มีคนดูแล {d.nobody.length} บ่อ</b>
-          <span className="l5 mut">{d.nobody.map((p) => p.pondCode).join(' ')}</span>
+        <div className="tm-pc">
+          <b className="tm-nb">ยังไม่มีคนดูแล {d.nobody.length} บ่อ</b>
+          <span className="tm-nbs">{d.nobody.map((p) => p.pondCode).join(' ')}</span>
           {owner ? (
             <MBtn icon="users" onClick={() => navigate(P.people)}>
               เลือกคนดูแลที่หน้าคนในฟาร์ม

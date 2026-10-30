@@ -5,6 +5,7 @@ import type { Overview as OverviewData, QueueRow } from '@/api/types'
 import { Page } from '@/components/Page'
 import { Icon } from '@/components/Icon'
 import { WatchList } from '@/components/WatchList'
+import { HomeBand } from '@/components/band'
 import { Chip, ErrorState, InlineError, MBtn, Skeleton } from '@/components/ui'
 import { QueueChart } from '@/components/charts'
 import { fmt1, fmtQueueDay, fmtTonnes, fmtWeekday } from '@/lib/format'
@@ -39,33 +40,19 @@ export default function Overview() {
   const [saving, setSaving] = useState(false)
   const canPrint = session.permissions.printSheet
 
-  const top = (
-    <div className="hdr">
-      <div className="hrow">
-        <div style={{ display: 'grid', gap: 2 }}>
-          <b>{session.farm!.name}</b>
-          <span>
-            {fmtWeekday(session.today)} · {session.farm!.pondCount} บ่อ
-          </span>
-        </div>
-        <div className="hb">
-          {canPrint ? (
-            <button type="button" className="pb" onClick={() => navigate(P.print)}>
-              <Icon n="print" />
-              ใบสรุป
-            </button>
-          ) : null}
-          <button type="button" className="cb" onClick={() => navigate(P.settings)} aria-label="ตั้งค่า">
-            <Icon n="gear" />
-          </button>
-        </div>
-      </div>
-    </div>
+  const band = (
+    <HomeBand
+      farmName={session.farm!.name}
+      sub={`${fmtWeekday(session.today)} · ${session.farm!.pondCount} บ่อ`}
+      userName={session.user.name}
+      onProfile={() => navigate(P.settings)}
+    />
   )
 
   if (!o.data) {
     return (
-      <Page top={top} nav="overview">
+      <Page top={null} nav="overview">
+        {band}
         {o.error ? <ErrorState error={o.error} onRetry={o.reload} /> : <Skeleton rows={[180, 230, 80, 320]} />}
       </Page>
     )
@@ -96,7 +83,8 @@ export default function Overview() {
   )
 
   return (
-    <Page top={top} nav="overview">
+    <Page top={null} nav="overview">
+      {band}
       <WatchList items={d.watch} />
 
       <div className="xtiles">
@@ -172,6 +160,11 @@ export default function Overview() {
             </span>
           </button>
         ))}
+        {canPrint ? (
+          <MBtn icon="print" onClick={() => navigate(P.print)}>
+            พิมพ์ใบสรุป
+          </MBtn>
+        ) : null}
       </div>
 
       <div className="grp">

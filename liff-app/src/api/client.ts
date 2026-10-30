@@ -37,6 +37,7 @@ import type {
   Session,
   SettingsResponse,
   StartRequest,
+  GateRequest,
   Stocking,
   TeamTodayResponse,
   TodayResponse,
@@ -50,6 +51,7 @@ export const api = {
   /* session and start */
   session: () => apiFetch<Session>(`${B}/session`),
   start: (body: StartRequest) => apiFetch<Session>(`${B}/start`, { method: 'POST', body }),
+  gate: (code: string) => apiFetch<{ ok: true }>(`${B}/gate`, { method: 'POST', body: { code } satisfies GateRequest }),
   setTarget: (targetPerKg: number) => apiFetch<Session>(`${B}/farm`, { method: 'PATCH', body: { targetPerKg } }),
   me: () => apiFetch<{ ok: boolean; env: string; user: string }>(`${B}/me`),
 

@@ -6,7 +6,7 @@ import type { FarmRow, MemberRow, PondRow } from '../../data/types.js'
 
 const KEYS = [
   'ALLOW_DEV_LIFF_AUTH', 'LIFF_DEV_USER_ID', 'K_SERVICE', 'NODE_ENV',
-  'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SCAN_DAILY_LIMIT',
+  'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SCAN_DAILY_LIMIT', 'BETA_ACCESS_CODE',
 ] as const
 const saved: Record<string, string | undefined> = {}
 for (const k of KEYS) saved[k] = process.env[k]
@@ -103,6 +103,42 @@ describe('GET /session', () => {
     expect(res.body.role).toBe('worker')
     expect(res.body.pondIds).toEqual(['p1'])
     expect(res.body.permissions).toEqual({ editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, remindMissing: true })
+  })
+})
+
+describe('POST /gate (รหัสเข้าร่วม)', () => {
+  it('with no BETA_ACCESS_CODE any code passes, and /start asks for none', async () => {
+    const repos = createMemoryRepos()
+    expect((await as(NEW, repos).post('/gate', { code: 'anything' })).body).toEqual({ ok: true })
+    expect((await as(NEW, repos).post('/gate', { code: '  ' })).status).toBe(400)
+    expect((await as(NEW, repos).post('/start', { name: 'ฟาร์ม', ponds: ['A01'] })).status).toBe(200)
+  })
+
+  it('with BETA_ACCESS_CODE set, only that code passes (case, spaces and dashes aside) and nothing is written', async () => {
+    process.env.BETA_ACCESS_CODE = 'SHRIMP26'
+    const repos = createMemoryRepos()
+    expect((await as(NEW, repos).post('/gate', { code: 'shrimp-26 ' })).body).toEqual({ ok: true })
+    const wrong = await as(NEW, repos).post('/gate', { code: 'PRAWN26' })
+    expect(wrong.status).toBe(404)
+    expect(wrong.body.error).toBe('invalid_code')
+    expect(repos.state.lineUsers).toHaveLength(0)
+  })
+
+  it('with BETA_ACCESS_CODE set, /start without the code is 403 code_required and writes nothing', async () => {
+    process.env.BETA_ACCESS_CODE = 'SHRIMP26'
+    const repos = createMemoryRepos()
+    const res = await as(NEW, repos).post('/start', { name: 'ฟาร์ม', ponds: ['A01'] })
+    expect(res.status).toBe(403)
+    expect(res.body.error).toBe('code_required')
+    nothingWritten(repos, 0)
+    expect((await as(NEW, repos).post('/start', { name: 'ฟาร์ม', ponds: ['A01'], code: 'shrimp26' })).status).toBe(200)
+  })
+
+  it('a person from น้องน้ำ is refused at the gate too', async () => {
+    const repos = createMemoryRepos({ farms: [nongNamFarm], members: [{ id: 'm-nn', farmId: 'farm-nn', lineUserId: NN, role: 'owner', name: 'พี่', pondIds: [], status: 'active' }] })
+    const res = await as(NN, repos).post('/gate', { code: 'x' })
+    expect(res.status).toBe(403)
+    expect(res.body.error).toBe('use_nong_nam')
   })
 })
 

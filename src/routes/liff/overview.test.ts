@@ -183,6 +183,17 @@ describe('GET /team/today', () => {
     expect(t.people[0]).toMatchObject({ memberId: 'm-worker', role: 'worker', pondsLabel: 'A01 ถึง A02', lastAt: `${TODAY}T01:00:00.000Z` })
   })
 
+  it('the grid: ponds scanned each day of the last 13 weeks, oldest first, a pond once a day', async () => {
+    const repos = seeded()
+    repos.state.scans.push(scan('a0', 'p1', TODAY, 22.1), scan('old', 'p1', addDays(TODAY, -200), 5))
+    const t = (await as(OWNER, repos).get('/team/today')).body
+    expect(t.history).toEqual([
+      { date: addDays(TODAY, -2), done: 3 },
+      { date: addDays(TODAY, -1), done: 3 },
+      { date: TODAY, done: 2 },
+    ])
+  })
+
   it('a pond nobody looks after is listed apart; the reminder line follows the switch', async () => {
     const repos = seeded({ members: [owner, worker] })
     await as(OWNER, repos).patch('/settings', { notify: { remindWorkers: false } }).expect(200)

@@ -118,7 +118,7 @@ BUILDER=gha-linebot@$P.iam.gserviceaccount.com
 
 Until the Cloud Run staging service exists, staging runs on Railway
 (https://shrimpscan-line-bot-staging.up.railway.app, from `launch-prep`). Set
-these five variables on that service (Variables tab), never in a file, a
+these six variables on that service (Variables tab), never in a file, a
 commit or a chat:
 
 | Variable | What it is |
@@ -128,6 +128,7 @@ commit or a chat:
 | `SIZING_SERVICE_URL` | line-bot's sizing service (`/v1/rim`, `/v1/measure`) |
 | `SIZING_SERVICE_SECRET` | its shared secret |
 | `SCAN_DAILY_LIMIT` | measured photos per farm per day, default 20; at least the farm's pond count |
+| `BETA_ACCESS_CODE` | รหัสเข้าร่วม a new owner types before making a farm. Unset = any code passes |
 
 Because staging writes to prod for now, the server touches only farms this OA
 created (`created_via = 'shrimp_scan_oa'`). To check what the two `SUPABASE_*`

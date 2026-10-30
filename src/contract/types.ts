@@ -87,7 +87,17 @@ export interface Session {
 
 /* ---------- start (O2 to O6) ---------- */
 
-export type StartRequest = { useFarmId: string } | { name: string; ponds: string[] }
+export type StartRequest = { useFarmId: string } | { name: string; ponds: string[]; code?: string }
+
+/**
+ * รหัสเข้าร่วม: the door before a new farm, as in น้องน้ำ's beta gate. One
+ * shared code (`BETA_ACCESS_CODE` on the server); with none set, any code
+ * opens it. `POST /gate` checks the code only, writes nothing; `/start`
+ * checks it again, so the code rides along in StartRequest.
+ */
+export interface GateRequest {
+  code: string
+}
 
 /* ---------- ponds ---------- */
 
@@ -367,6 +377,17 @@ export interface TeamTodayResponse {
   nobody: TeamPond[]
   /** When น้ำ reminds the people with ponds left ('10:00'); null when the reminder is off. */
   remindAt: string | null
+  /**
+   * The farm's last 13 weeks, today included: how many ponds were scanned
+   * each day. A day with no scan is left out. `total` above is the size of
+   * every day (the farm's ponds now).
+   */
+  history: TeamDay[]
+}
+
+export interface TeamDay {
+  date: string
+  done: number
 }
 
 /* ---------- owner: inbox (O13 to O18) ---------- */
@@ -591,6 +612,8 @@ export type ApiErrorCode =
   | 'remeasure_limit'
   | 'net_out_of_range'
   | 'invite_invalid'
+  | 'invalid_code'
+  | 'code_required'
   | 'not_found'
   | 'not_built_yet'
   | 'liff_not_configured'

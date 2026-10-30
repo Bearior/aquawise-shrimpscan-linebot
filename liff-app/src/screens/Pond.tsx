@@ -5,57 +5,157 @@ import type { PondDetail } from '@/api/types'
 import { Page } from '@/components/Page'
 import { Icon } from '@/components/Icon'
 import { Btn, ErrorState, MBtn, Skeleton } from '@/components/ui'
-import { DistBody } from '@/components/result'
 import { GrowthChart } from '@/components/charts'
 import { AskAgainSheet } from '@/components/ask-again'
 import { PondPickerSheet } from '@/components/pond-picker'
 import { addDays, dayOfMonth, fmt1, fmtDay, fmtDayYear, fmtInt, fmtTime, fmtTonnes, fmtWeekdayShort, fmtWhen, monthShort } from '@/lib/format'
-import { gramsAt } from '@/lib/sizes'
+import { DIST_COLOR, distSay, distribution, gramsAt } from '@/lib/sizes'
 import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
 import { useSession, useToast } from '@/session'
 
-function Banner({ d, target }: { d: PondDetail; target: number }) {
+/** The stripe at the top of the answer card: why the pond is red or yellow today. */
+function Stripe({ d }: { d: PondDetail }) {
   const p = d.pond
   if (p.status === 'missing') {
+    const who = p.caretaker ? `${p.caretaker}ยังไม่ได้สแกนบ่อนี้วันนี้` : 'บ่อนี้ยังไม่มีคนดูแล วันนี้ยังไม่มีใครสแกน'
     return (
-      <div className="xban u">
-        <b>วันนี้ยังไม่ได้สแกน</b>
-        <span>{p.caretaker ? `${p.caretaker}ยังไม่ได้สแกนบ่อนี้วันนี้` : 'บ่อนี้ยังไม่มีคนดูแล วันนี้ยังไม่มีใครสแกน'}</span>
+      <div className="pg-stripe bd">
+        <Icon n="cam" />
+        <span>
+          <b>วันนี้ยังไม่ได้สแกน</b> · {who}
+          {d.latest ? ' ตัวเลขด้านล่างมาจากครั้งก่อน' : ''}
+        </span>
       </div>
     )
   }
   if (p.status === 'urgent' || p.status === 'watch') {
     return (
-      <div className={`xban ${p.status === 'urgent' ? 'u' : 'w'}`}>
-        <b>{p.status === 'urgent' ? 'ต้องดู' : 'เฝ้าระวัง'}</b>
-        <span>{p.issue ?? 'ไซส์เริ่มไม่เสมอ'}</span>
+      <div className={`pg-stripe ${p.status === 'urgent' ? 'bd' : 'wn'}`}>
+        <Icon n="warn" />
+        <span>
+          <b>{p.status === 'urgent' ? 'ต้องดู' : 'เฝ้าระวัง'}</b> · {p.issue ?? 'ไซส์เริ่มไม่เสมอ'}
+        </span>
+      </div>
+    )
+  }
+  return null
+}
+
+/** The half ring: grams a shrimp now, against the grams the farm's size needs. */
+function Gauge({ abw, targetG, ready }: { abw: number | null; targetG: number; ready: boolean }) {
+  const frac = abw === null ? 0 : Math.min(1, abw / targetG)
+  return (
+    <div className="pg-gauge" role="img" aria-label={abw === null ? 'ยังไม่รู้น้ำหนัก' : `${fmt1(abw)} จาก ${fmt1(targetG)} กรัม`}>
+      <svg viewBox="0 0 136 90">
+        <path d="M12 80 A56 56 0 0 1 124 80" fill="none" stroke="#E0E0EA" strokeWidth="14" strokeLinecap="round" />
+        {abw !== null ? (
+          <path
+            d="M12 80 A56 56 0 0 1 124 80"
+            fill="none"
+            stroke={ready ? '#00706F' : '#004AAD'}
+            strokeWidth="14"
+            strokeLinecap="round"
+            pathLength={100}
+            strokeDasharray={`${(frac * 100).toFixed(1)} 100`}
+          />
+        ) : null}
+      </svg>
+      <div className="pg-gc">
+        <b className="mono">{abw === null ? '-' : fmt1(abw)}</b>
+        <span>จาก {fmt1(targetG).replace(/\.0$/, '')} ก.</span>
+      </div>
+    </div>
+  )
+}
+
+/** The answer beside the gauge: how many days to the farm's size, and roughly when. */
+function Answer({ d, target }: { d: PondDetail; target: number }) {
+  const p = d.pond
+  if (p.daysToTarget !== null && p.daysToTarget <= 0) {
+    return (
+      <div className="pg-gt">
+        <span className="k">ถึงไซส์ {target}</span>
+        <span className="big rd">แล้ว</span>
+        <span className="when">จับได้ตั้งแต่วันนี้</span>
       </div>
     )
   }
   if (p.daysToTarget === null || !p.reachOn) {
     return (
-      <div className="xban g">
-        <b>ยังบอกวันถึงไซส์ไม่ได้</b>
-        <span>สแกนอีกสักรอบ น้ำจะคิดวันให้ค่ะ</span>
+      <div className="pg-gt">
+        <span className="k">ถึงไซส์ {target} อีก</span>
+        <span className="big">ยังไม่รู้</span>
+        <span className="when">สแกนอีกสักรอบ น้ำจะคิดวันให้ค่ะ</span>
       </div>
     )
   }
   const a = addDays(p.reachOn, -1)
   const b = addDays(p.reachOn, 1)
   const range = monthShort(a) === monthShort(b) ? `${dayOfMonth(a)} ถึง ${fmtDay(b)}` : `${fmtDay(a)} ถึง ${fmtDay(b)}`
-  const head = p.daysToTarget <= 0 ? `ถึงไซส์ ${target} แล้ว` : p.status === 'ready' ? `พร้อมจับ อีกราว ${p.daysToTarget} วัน` : `โตดี อีกราว ${p.daysToTarget} วัน`
+  const chance = d.onTimeChance
   return (
-    <div className={`xban${p.status === 'ready' ? '' : ' g'}`}>
-      <b>{head}</b>
-      <span>
-        ถึงไซส์ {target} ราว {fmtWeekdayShort(p.reachOn)} (ช่วง {range})
+    <div className="pg-gt">
+      <span className="k">{p.status === 'ready' ? `พร้อมจับ ถึงไซส์ ${target} อีก` : `ถึงไซส์ ${target} อีก`}</span>
+      <span className={`big${p.status === 'ready' ? ' rd' : ''}`}>
+        <span className="mono">{p.daysToTarget}</span> <small>วัน</small>
       </span>
+      <span className="when">
+        ราว {fmtWeekdayShort(p.reachOn)} (ช่วง {range})
+      </span>
+      {chance !== null ? (
+        <span className={`pill ${chance >= 0.7 ? 'rd' : chance >= 0.5 ? 'wn' : 'bd'}`}>
+          <Icon n="clock" />
+          โอกาสทันกำหนด {Math.round(chance * 100)}%
+        </span>
+      ) : null}
     </div>
   )
 }
 
-/** หน้าบ่อ (O23): what to do with the pond first, then the answer (ready in N days), the numbers, the sizes, growth, tonnes, the last scan. */
+/** ขนาดกุ้งในยอ as rows of bars, the biggest shrimp first; the row name is ตัวต่อกิโล. */
+function Sizes({ grams, target }: { grams: number[]; target: number }) {
+  const d = distribution(grams, target)
+  const say = distSay(d, target)
+  const max = Math.max(1, ...d.rows.map((r) => r.count))
+  return (
+    <div className="pg-card">
+      <b className="h">ขนาดกุ้งในยอ</b>
+      <span className="sub">
+        นับ {d.n} ตัว · เล็กสุด {fmt1(d.min)} ก. ใหญ่สุด {fmt1(d.max)} ก. · ชื่อแถว คือ ตัวต่อกิโล
+      </span>
+      <div className="pg-hb">
+        {d.rows.map((r) => (
+          <div className="r" key={r.label}>
+            <div className="l">
+              <b>{r.label}</b>
+              <span>{r.grams}</span>
+            </div>
+            <div className="bar">
+              <i style={{ width: `${Math.max(4, Math.round((r.count / max) * 100))}%`, background: DIST_COLOR[r.kind] }} />
+            </div>
+            <div className="v">
+              <b className="mono">{r.pct}%</b>
+              <span>{r.count} ตัว</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="pg-say">
+        {say.lead ? <b>{say.lead}</b> : null}
+        {say.rest}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * หน้าบ่อ (O23), แบบ A of the หน้าบ่อ redesign (docs/shrimpscan-ponds-team-redesign):
+ * the pond picker in the header (‹ บ่อ A05 ⌄ ›), what to do first, then one
+ * card that answers "when": a half ring of grams against the size, the days
+ * left and the chance of making it. Then the three numbers, the sizes in the
+ * ยอ, growth with its ± SD band, tonnes, and the last scan.
+ */
 export default function Pond() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
@@ -70,7 +170,7 @@ export default function Pond() {
   if (!r.data) {
     return (
       <Page title="บ่อ" back={P.ponds}>
-        {r.error ? <ErrorState error={r.error} onRetry={r.reload} /> : <Skeleton rows={[48, 80, 90, 120, 300]} />}
+        {r.error ? <ErrorState error={r.error} onRetry={r.reload} /> : <Skeleton rows={[52, 150, 90, 260, 300]} />}
       </Page>
     )
   }
@@ -83,16 +183,34 @@ export default function Pond() {
   const who = [p.caretaker, `โซน ${p.zone}`, p.ageDays !== null ? `เลี้ยง ${p.ageDays} วัน` : null].filter(Boolean).join(' · ')
   const canPrint = session.permissions.printSheet && Boolean(d.latest)
   const hasBand = d.growth.length >= 2 && d.growth.some((g) => g.sd != null)
+  const go = (next: string) => navigate(P.pond(next), { replace: true })
+  const reached = p.daysToTarget !== null && p.daysToTarget <= 0
 
-  return (
-    <Page
-      title={
-        <button type="button" className="ppick" aria-haspopup="dialog" aria-expanded={picking} aria-label={`บ่อ ${p.code} · เลือกบ่ออื่น`} onClick={() => setPicking(true)}>
+  const head = (
+    <div className="pg-h">
+      <button type="button" className="pg-r" onClick={() => navigate(P.ponds)} aria-label="กลับไปรายบ่อ">
+        <Icon n="larr" />
+      </button>
+      <div className="pg-pk">
+        <button type="button" className="pg-r" disabled={!d.prevId} onClick={() => d.prevId && go(d.prevId)} aria-label={d.prevCode ? `บ่อก่อนหน้า ${d.prevCode}` : 'ไม่มีบ่อก่อนหน้า'}>
+          <Icon n="back" />
+        </button>
+        <button type="button" className="pg-pill" aria-haspopup="dialog" aria-expanded={picking} aria-label={`บ่อ ${p.code} · เลือกบ่ออื่น`} onClick={() => setPicking(true)}>
           บ่อ {p.code}
           <Icon n="down" />
         </button>
-      }
-      back={P.ponds}
+        <button type="button" className="pg-r" disabled={!d.nextId} onClick={() => d.nextId && go(d.nextId)} aria-label={d.nextCode ? `บ่อถัดไป ${d.nextCode}` : 'ไม่มีบ่อถัดไป'}>
+          <Icon n="chev" />
+        </button>
+      </div>
+      <span />
+      <span className="pg-who">{who}</span>
+    </div>
+  )
+
+  return (
+    <Page
+      top={head}
       over={
         picking ? (
           <PondPickerSheet
@@ -103,7 +221,7 @@ export default function Pond() {
             onCancel={() => setPicking(false)}
             onPick={(next) => {
               setPicking(false)
-              navigate(P.pond(next), { replace: true })
+              go(next)
             }}
           />
         ) : ask && d.latest ? (
@@ -122,39 +240,45 @@ export default function Pond() {
         ) : null
       }
     >
-      <div style={{ display: 'grid', gap: 2 }}>
-        <b className="l1">บ่อ {p.code}</b>
-        <span className="l5 mut">{who}</span>
-      </div>
-      <div className="pact">
-        <Btn kind="s" icon="scan" className={canPrint ? undefined : 'w'} onClick={() => navigate(P.scan(p.id))}>
+      <div className={`pg-acts${canPrint ? '' : ' one'}`}>
+        <button type="button" className="pg-bp" onClick={() => navigate(P.scan(p.id))}>
+          <Icon n="scan" />
           สแกนบ่อนี้
-        </Btn>
+        </button>
         {canPrint ? (
-          <Btn kind="s" icon="print" onClick={() => navigate(P.printPond(p.id))}>
+          <button type="button" className="pg-bs" onClick={() => navigate(P.printPond(p.id))}>
+            <Icon n="print" />
             พิมพ์ใบผล
-          </Btn>
-        ) : null}
-        {d.latest && p.caretaker ? (
-          <Btn kind="l" className="w" onClick={() => setAsk(true)}>
-            ขอรูปใหม่จาก{p.caretaker}
-          </Btn>
+          </button>
         ) : null}
       </div>
-      <Banner d={d} target={target} />
+      {d.latest && p.caretaker ? (
+        <button type="button" className="pg-tl" onClick={() => setAsk(true)}>
+          ขอรูปใหม่จาก{p.caretaker}
+        </button>
+      ) : null}
+
+      <div className="pg-card">
+        <Stripe d={d} />
+        <div className="pg-hero">
+          <Gauge abw={p.abw} targetG={targetG} ready={reached || p.status === 'ready'} />
+          <Answer d={d} target={target} />
+        </div>
+      </div>
+
       {p.perKg !== null && p.abw !== null ? (
-        <div className="xst">
+        <div className="pg-st3">
           <div>
-            <b>{p.perKg}</b>
+            <b className="mono">{p.perKg}</b>
             <span>ตัวต่อกิโล</span>
           </div>
           <div>
-            <b>{fmt1(p.abw)}</b>
+            <b className="mono">{fmt1(p.abw)}</b>
             <span>กรัมต่อตัว</span>
           </div>
           {p.gPerDay !== null ? (
-            <div className="w2">
-              <b>
+            <div>
+              <b className={`mono${p.gPerDay >= 0 ? ' up' : ''}`}>
                 {p.gPerDay >= 0 ? '+' : ''}
                 {p.gPerDay.toFixed(2)}
               </b>
@@ -163,6 +287,7 @@ export default function Pond() {
           ) : null}
         </div>
       ) : null}
+
       {d.note ? (
         <div className="pnote">
           <Icon n="msg" />
@@ -175,55 +300,70 @@ export default function Pond() {
           </span>
         </div>
       ) : null}
-      {d.latestShrimpGrams.length ? <DistBody grams={d.latestShrimpGrams} target={target} /> : null}
-      <div className="vc">
-        <b className="l3">{p.gPerDay !== null ? `กุ้งโตวันละ ${p.gPerDay.toFixed(2)} กรัม` : 'น้ำหนักกุ้งในบ่อนี้'}</b>
-        <span className="l5 mut">
-          เส้นประเขียว คือไซส์ {target} ({fmt1(targetG).replace(/\.0$/, '')} กรัม)
+
+      {d.latestShrimpGrams.length ? <Sizes grams={d.latestShrimpGrams} target={target} /> : null}
+
+      <div className="pg-card">
+        <b className="h">
+          {p.gPerDay !== null ? (
+            <>
+              กุ้งโตวันละ <span className="mono">{p.gPerDay.toFixed(2)}</span> กรัม
+            </>
+          ) : (
+            'น้ำหนักกุ้งในบ่อนี้'
+          )}
+        </b>
+        <span className="sub">
+          {hasBand ? 'แถบฟ้า คือช่วงน้ำหนักกุ้งส่วนใหญ่ (± SD) · ' : ''}เส้นประเขียว คือไซส์ {target} ({fmt1(targetG).replace(/\.0$/, '')} กรัม)
         </span>
-        {hasBand ? <span className="l5 mut">แถบฟ้า คือช่วงน้ำหนักกุ้งส่วนใหญ่ (± SD)</span> : null}
         <GrowthChart points={d.growth} targetPerKg={target} w={300} h={190} gPerDay={p.gPerDay} band />
-        <div className="pst2">
+        <div className="pg-kv2">
           <div>
             <span>ต้องโตอีก</span>
-            <b>{left === null ? 'ยังไม่รู้' : left <= 0 ? 'ถึงแล้ว' : `${fmt1(left)} กรัม`}</b>
+            <b>{left === null ? 'ยังไม่รู้' : left <= 0 ? 'ถึงแล้ว' : <><span className="mono">{fmt1(left)}</span> กรัม</>}</b>
           </div>
           <div>
-            <span>โอกาสถึงตามกำหนด</span>
-            <b>{d.onTimeChance === null ? 'ยังไม่รู้' : `ราว ${Math.round(d.onTimeChance * 100)}%`}</b>
+            <span>ถึงไซส์ {target}</span>
+            <b>{reached ? 'ถึงแล้ว' : p.reachOn ? fmtDay(p.reachOn) : 'ยังไม่รู้'}</b>
           </div>
         </div>
       </div>
-      <div className="vc">
+
+      <div className="pg-card">
         {d.tonnesNow !== null && st.count && st.stockedOn ? (
           <>
-            <b className="l3">กุ้งในบ่อราว {fmtTonnes(d.tonnesNow)} ตัน</b>
-            <span className="l5 mut">
+            <b className="h">
+              กุ้งในบ่อราว <span className="mono">{fmtTonnes(d.tonnesNow)}</span> ตัน
+            </b>
+            <span className="sub">
               ลง {fmtInt(st.count)} ตัว {fmtDay(st.stockedOn)}
               {st.survival !== null ? ` · คิดว่ารอด ${Math.round(st.survival * 100)}%` : ''}
             </span>
-            <Btn kind="l" onClick={() => navigate(P.stocking(p.id))}>
+            <button type="button" className="pg-lnk" onClick={() => navigate(P.stocking(p.id))}>
               แก้ข้อมูลลงกุ้ง
-            </Btn>
+              <Icon n="chev" />
+            </button>
           </>
         ) : (
           <>
-            <b className="l3">ยังไม่รู้ว่ากุ้งในบ่อกี่ตัน</b>
-            <span className="l5 mut">ใส่วันลงกุ้งกับจำนวนครั้งเดียว น้ำคิดให้ค่ะ</span>
+            <b className="h">ยังไม่รู้ว่ากุ้งในบ่อกี่ตัน</b>
+            <span className="sub">ใส่วันลงกุ้งกับจำนวนครั้งเดียว น้ำคิดให้ค่ะ</span>
             <Btn kind="l" onClick={() => navigate(P.stocking(p.id))}>
               ใส่ข้อมูลลงกุ้ง
             </Btn>
           </>
         )}
       </div>
+
       {d.latest ? (
-        <div className="vc">
+        <div className="pg-card">
           <div className="lscan">
             <span className="thm photo" style={{ backgroundImage: `url(${d.latest.photoUrl})` }} />
             <div>
               <b className="l3">สแกนล่าสุด {fmtWhen(d.latest.at, session.today)}</b>
               <span className="l5 mut">
                 {d.latest.photoBy === d.latest.measuredBy ? `${d.latest.photoBy}สแกน` : `${d.latest.photoBy}ถ่าย · ${d.latest.measuredBy}วัด`}
+                {d.latestShrimpGrams.length ? ` · นับได้ ${d.latestShrimpGrams.length} ตัว` : ''}
               </span>
             </div>
           </div>

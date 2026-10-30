@@ -294,6 +294,8 @@ export interface NetsRepo {
 export interface ScansRepo {
   /** Saved scans of the farm on or after `sinceDay`, newest first. */
   savedOfFarm(farmId: string, sinceDay: string): Promise<ScanRow[]>
+  /** Which pond was scanned on which day, on or after `sinceDay`: two columns, every row (สแกนวันนี้'s grid). */
+  scanDays(farmId: string, sinceDay: string): Promise<{ pondId: string; sampleDate: string }[]>
   /** Every saved scan of the pond, newest first. */
   savedOfPond(pondId: string): Promise<ScanRow[]>
   /** Null for an id that is not a scan (or not a uuid). */
