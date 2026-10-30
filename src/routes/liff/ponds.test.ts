@@ -85,8 +85,8 @@ describe('GET /ponds', () => {
     expect(res.status).toBe(200)
     expect(res.body.ponds.map((t: { code: string }) => t.code)).toEqual(['A01', 'A02', 'B01'])
     expect(res.body.zones).toEqual([
-      { zone: 'A', caretaker: 'น้องเอ', total: 2, photoToday: 1 },
-      { zone: 'B', caretaker: null, total: 1, photoToday: 0 },
+      { zone: 'A', name: null, caretaker: 'น้องเอ', total: 2, photoToday: 1 },
+      { zone: 'B', name: null, caretaker: null, total: 1, photoToday: 0 },
     ])
     const [a01, a02, b01] = res.body.ponds
     expect(a01).toMatchObject({ id: 'p1', abw: 10.6, perKg: 94, gPerDay: 0.3, photoToday: true, mine: true, ageDays: 40, netId: 'net-farm', caretaker: 'น้องเอ' })

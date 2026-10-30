@@ -6,9 +6,9 @@
  *   dev token (`.env.mock`) stands in for the ID token.
  * - `/api/liff/*` wants `Authorization: Bearer dev-liff` like the real server's
  *   dev bypass, so a screen that forgets to wait for LIFF still 401s here.
- * - Who you are comes from `x-mock-persona` (`?as=owner|worker|new|fresh`).
+ * - Who you are comes from `x-mock-persona` (`?as=owner|manager|worker|new|fresh`).
  * - `/mock-photos/:id` serves the fixtures in ./fixtures and photos uploaded
- *   in this run.
+ *   in this run; `/mock-avatars/:id` draws a LINE picture for some people.
  *
  * State lives until the dev server restarts. `POST /api/mock/reset` starts over.
  */
@@ -18,10 +18,10 @@ import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { MockError, Store, photos, type Persona } from './store'
-import type { MemberPondsPut, WatchAckPut } from '../src/api/types'
+import type { MemberPondsPut, PondRename, PondsAdd, WatchAckPut, ZoneNamePut } from '../src/api/types'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const PERSONAS: Persona[] = ['owner', 'worker', 'new', 'fresh']
+const PERSONAS: Persona[] = ['owner', 'manager', 'worker', 'new', 'fresh']
 /** A model call takes a moment; the screens show their own progress meanwhile. */
 const MEASURE_DELAY_MS = 600
 
@@ -65,6 +65,9 @@ function routes(store: Store): [string, RegExp, Handler][] {
     r('GET', '/me', ({ persona }) => store.me(persona)),
 
     r('GET', '/ponds', ({ persona }) => store.ponds(persona)),
+    r('POST', '/ponds', ({ persona, body }) => store.addPonds(persona, b<PondsAdd>(body)?.codes ?? [])),
+    r('PATCH', '/ponds/:id', ({ persona, body }, id) => store.renamePond(persona, id!, b<PondRename>(body)?.code ?? '')),
+    r('PUT', '/zones/:zone', ({ persona, body }, zone) => store.setZoneName(persona, zone!, b<ZoneNamePut>(body)?.name ?? '')),
     r('GET', '/ponds/:id', ({ persona }, id) => store.pondDetail(persona, id!)),
     r('GET', '/ponds/:id/scans', ({ persona }, id) => store.pondScans(persona, id!)),
     r('GET', '/ponds/:id/stocking', ({ persona }, id) => store.stocking(persona, id!)),
@@ -125,6 +128,18 @@ function routes(store: Store): [string, RegExp, Handler][] {
   ]
 }
 
+/** A LINE picture stand-in: head and shoulders on a colour of the person's own. */
+function serveAvatar(res: ServerResponse, id: string): void {
+  const hues = [205, 150, 25, 280, 340]
+  let h = 0
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  const hue = hues[h % hues.length]!
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" fill="hsl(${hue} 45% 78%)"/><circle cx="48" cy="38" r="17" fill="hsl(${hue} 30% 38%)"/><path d="M14 96c2-20 16-31 34-31s32 11 34 31z" fill="hsl(${hue} 30% 38%)"/></svg>`
+  res.setHeader('Content-Type', 'image/svg+xml')
+  res.setHeader('Cache-Control', 'max-age=3600')
+  res.end(svg)
+}
+
 function servePhoto(res: ServerResponse, name: string): void {
   const uploaded = photos.get(name)
   if (uploaded) {
@@ -155,6 +170,7 @@ export function mockApiPlugin(): Plugin {
         const p = url.pathname
 
         if (p.startsWith('/mock-photos/')) return servePhoto(res, decodeURIComponent(p.slice('/mock-photos/'.length)))
+        if (p.startsWith('/mock-avatars/')) return serveAvatar(res, decodeURIComponent(p.slice('/mock-avatars/'.length)))
         if (!p.startsWith('/api/')) return next()
 
         if (p === '/api/liff-config') return send(res, 200, { env: 'mock' })

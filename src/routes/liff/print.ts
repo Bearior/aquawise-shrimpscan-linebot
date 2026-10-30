@@ -25,7 +25,7 @@ export function printRouter(getRepos: GetRepos): Router {
       need(me, 'printSheet')
       const view = await farmView(repos, farm, me)
       const [tiles, settings] = await Promise.all([farmTiles(repos, view), repos.settings.read(farm.id)])
-      const o = overviewOf(view, tiles, settings.acks)
+      const o = overviewOf(view, tiles, settings)
       const caretakerOf = (id: string) => tiles.find((t) => t.id === id)?.caretaker ?? null
       return {
         farmName: farm.name,

@@ -19,6 +19,16 @@ export const PERMISSION_KEYS = Object.keys(DEFAULTS.owner) as PermissionKey[]
 
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x)
 
+/** A zone's name as people read it: one line, at most this long. */
+export const ZONE_NAME_MAX = 30
+
+/** The name worth keeping: trimmed, one line, never blank; null takes the name off. */
+export function zoneNameOf(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const name = raw.replace(/\s+/g, ' ').trim()
+  return name && name.length <= ZONE_NAME_MAX ? name : null
+}
+
 function booleans<T extends object>(raw: unknown, base: T): T {
   const out = { ...base }
   if (!isObject(raw)) return out
@@ -32,6 +42,7 @@ function booleans<T extends object>(raw: unknown, base: T): T {
 export function settingsFromJson(raw: unknown): FarmSettings {
   const perms: Record<string, Permissions> = {}
   const acks: Record<string, StoredAck> = {}
+  const zones: Record<string, string> = {}
   const top = isObject(raw) ? raw : {}
   if (isObject(top.perms)) {
     for (const [id, p] of Object.entries(top.perms)) if (isObject(p)) perms[id] = booleans(p, DEFAULTS.worker)
@@ -43,12 +54,18 @@ export function settingsFromJson(raw: unknown): FarmSettings {
       }
     }
   }
-  return { notify: booleans(top, NOTIFY_DEFAULTS), perms, acks }
+  if (isObject(top.zones)) {
+    for (const [zone, n] of Object.entries(top.zones)) {
+      const name = zoneNameOf(n)
+      if (name) zones[zone] = name
+    }
+  }
+  return { notify: booleans(top, NOTIFY_DEFAULTS), perms, acks, zones }
 }
 
 export function settingsToJson(s: FarmSettings): Record<string, unknown> {
   const notify = Object.fromEntries(NOTIFY_KEYS.map((k) => [k, s.notify[k]]))
-  return { ...notify, perms: s.perms, acks: s.acks }
+  return { ...notify, perms: s.perms, acks: s.acks, zones: s.zones }
 }
 
 /** What this person may do: the owner's switches for them over their role's defaults, a worker's size keys held off. */

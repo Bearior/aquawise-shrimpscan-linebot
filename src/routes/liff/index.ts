@@ -12,6 +12,7 @@ import { sizingService, type SizingClient } from '../../lib/sizing.js'
 import { verifyLiffIdToken } from '../../middleware/liff-auth.js'
 import { bodyErrors } from './errors.js'
 import type { GetRepos } from './handle.js'
+import { layoutRouter } from './layout.js'
 import { measureRouter } from './measure.js'
 import { netsRouter } from './nets.js'
 import { overviewRouter } from './overview.js'
@@ -45,6 +46,7 @@ export function liffRouter(opts: LiffRouterOptions = {}): Router {
   r.use(verifyLiffIdToken, express.json({ limit: '64kb' }), bodyErrors)
   r.use(sessionRouter(getRepos))
   r.use(pondsRouter(getRepos))
+  r.use(layoutRouter(getRepos))
   r.use(netsRouter(getRepos))
   r.use(overviewRouter(getRepos))
   r.use(peopleRouter(getRepos))

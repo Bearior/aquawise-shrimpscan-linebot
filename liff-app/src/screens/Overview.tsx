@@ -8,6 +8,7 @@ import { WatchList } from '@/components/WatchList'
 import { HomeBand } from '@/components/band'
 import { Chip, ErrorState, InlineError, MBtn, Skeleton } from '@/components/ui'
 import { QueueChart } from '@/components/charts'
+import { zoneLabel } from '@/lib/farm-layout'
 import { fmt1, fmtQueueDay, fmtTonnes, fmtWeekday } from '@/lib/format'
 import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
@@ -28,6 +29,60 @@ function QRow({ r, today, onOpen }: { r: QueueRow; today: string; onOpen: () => 
         {r.perKg} ตัว/กก. · {fmt1(r.abw)} ก.
       </span>
     </button>
+  )
+}
+
+/**
+ * Under สแกนวันนี้'s bar: one short row a zone (its name, a thin bar, done of
+ * total) instead of every pond name left (Bear, 2026-10-31: the red list
+ * "ยังไม่สแกน A01 A02 …" grew with the farm and showed every morning). A farm
+ * of one zone gets the count alone. Nothing here is red: a morning half done
+ * is the normal morning, and ต้องดู above already counts the ponds missed.
+ */
+function ScanZones({ day }: { day: OverviewData['photosToday'] }) {
+  const left = day.total - day.sent
+  if (!left) {
+    return (
+      <span className="ov-all">
+        <Icon n="check" />
+        สแกนครบทุกบ่อแล้วค่ะ
+      </span>
+    )
+  }
+  return (
+    <>
+      {day.zones.length > 1 ? (
+        <ul className="ov-zs" aria-label="สแกนวันนี้ทีละโซน">
+          {day.zones.map((z) => {
+            const done = z.done === z.total
+            return (
+              <li key={z.zone} className={done ? 'ok' : undefined}>
+                <span className="zl mono" aria-hidden="true">
+                  {z.zone}
+                </span>
+                <span className="zn">{zoneLabel(z.zone, z.name)}</span>
+                <span className="zb" aria-hidden="true">
+                  <i style={{ width: `${z.total ? Math.round((z.done / z.total) * 100) : 0}%` }} />
+                </span>
+                {done ? (
+                  <span className="zc ok" aria-label={`ครบ ${z.total} บ่อ`}>
+                    <Icon n="check" />
+                  </span>
+                ) : (
+                  <b className="zc mono">
+                    {z.done}/{z.total}
+                  </b>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
+      <span className="ov-left">
+        ยังไม่สแกน <b className="mono">{left}</b> บ่อ
+        {day.remindAt ? ` · ${day.remindAt} น้ำจะเตือนให้ค่ะ` : ''}
+      </span>
+    </>
   )
 }
 
@@ -114,12 +169,7 @@ export default function Overview() {
         <div className="pt">
           <i style={{ width: `${sentPct.toFixed(1)}%` }} />
         </div>
-        {d.photosToday.missing.length ? (
-          <span className="miss">
-            <Icon n="warn" />
-            ยังไม่สแกน {d.photosToday.missing.join(' ')}
-          </span>
-        ) : null}
+        <ScanZones day={d.photosToday} />
         <MBtn icon="users" onClick={() => navigate(P.team)}>
           ดูว่าใครสแกนแล้ว
         </MBtn>

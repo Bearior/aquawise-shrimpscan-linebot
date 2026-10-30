@@ -1,0 +1,401 @@
+/* Round 3 (Bear, 2026-10-31): LINE pictures, สแกนวันนี้ by zone, the calendar,
+   one-line tiles, แก้ไขโซนและบ่อ, zone names in onboarding. */
+
+/* ---------- a LINE picture in a person's circle (avatar.tsx) ---------- */
+.ava.pic {
+  overflow: hidden;
+  background: var(--ln);
+}
+.ava.pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---------- the calendar (date-picker.tsx), after line-bot's MonthGrid ---------- */
+.dp {
+  display: grid;
+}
+.dp-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.dp-h b {
+  font-size: 19px;
+  font-weight: 800;
+}
+.dp-h button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--sf);
+}
+.dp-h button:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+.dp-h button .i {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.4;
+}
+.dp-w,
+.dp-g {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.dp-w {
+  margin-bottom: 4px;
+}
+.dp-w span {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink3);
+  padding: 4px 0;
+}
+.dp-g {
+  gap: 2px;
+}
+.dp-g > span,
+.dp-g button {
+  height: 46px;
+}
+.dp-g button {
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.dp-g button.td {
+  box-shadow: inset 0 0 0 1.5px var(--hero);
+  font-weight: 800;
+}
+.dp-g button.on {
+  background: var(--hero);
+  color: #fff;
+  font-weight: 800;
+  box-shadow: none;
+}
+.dp-g button:disabled {
+  color: #b9b8c8;
+  pointer-events: none;
+}
+.scr .sheet.dp-s {
+  gap: 14px;
+}
+.dp-clear {
+  justify-self: center;
+  min-height: 48px;
+  padding: 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink2);
+}
+/* The field: the .inp box, a calendar mark, the day, a chip of how long ago. */
+.dp-f {
+  width: 100%;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--ln2);
+  background: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink3);
+  text-align: left;
+}
+.dp-f.on {
+  border-color: var(--hero);
+  color: var(--ink);
+}
+.dp-f > .i {
+  width: 22px;
+  height: 22px;
+  color: var(--hero);
+}
+.dp-f > span:not(.dp-chip) {
+  flex: 1;
+  min-width: 0;
+}
+.dp-chip {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--herot);
+  color: var(--hero);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---------- ภาพรวม · สแกนวันนี้, a short row a zone ---------- */
+.ov-zs {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ov-zs li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 72px 52px;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.ov-zs .zl {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--herot);
+  color: var(--hero);
+  font-size: 14px;
+  font-weight: 800;
+}
+.ov-zs .zn {
+  font-size: 16px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-zs .zb {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--ln2);
+  overflow: hidden;
+}
+.ov-zs .zb i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--hero);
+}
+.ov-zs .zc {
+  justify-self: end;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink2);
+}
+.ov-zs .zc.ok {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--good);
+  color: #fff;
+}
+.ov-zs .zc.ok .i {
+  width: 15px;
+  height: 15px;
+  stroke-width: 3;
+}
+.ov-zs li.ok .zn {
+  color: var(--ink3);
+}
+.ov-zs li.ok .zb i {
+  background: var(--good);
+}
+.ov-left {
+  font-size: 16px;
+  color: var(--ink2);
+  line-height: 1.45;
+}
+.ov-left b {
+  color: var(--ink);
+  font-weight: 800;
+}
+.ov-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--good);
+}
+.ov-all .i {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.8;
+}
+
+/* ---------- รายบ่อ ---------- */
+/* The tile's word stays on one line at the large text size: ยังไม่สแกน wrapped
+   to two and pushed the progress line into it. */
+.xl .pa-t .w {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.xl .pa-t.m .w {
+  gap: 3px;
+}
+.xl .pa-t.m .w .i {
+  width: 14px;
+  height: 14px;
+}
+/* A zone's name and its caretaker on one line, cut short before สแกนครบ. */
+.pa-zt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The owner's way into แก้ไขโซนและบ่อ, first on the page. */
+.pa-edit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 8px 12px 8px 10px;
+  border-radius: 16px;
+  border: 1.5px solid var(--heros);
+  background: var(--herot);
+  color: var(--ink);
+  text-align: left;
+}
+.pa-edit .ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: var(--hero);
+  flex: none;
+}
+.pa-edit .ic .i {
+  width: 20px;
+  height: 20px;
+}
+.pa-edit .tx {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.pa-edit .tx b {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--hero);
+}
+.pa-edit .tx span {
+  font-size: 14.5px;
+  color: var(--ink2);
+}
+.pa-edit > .i {
+  color: var(--hero);
+}
+
+/* ---------- แก้ไขโซนและบ่อ, and the zone name in onboarding ---------- */
+.pe-head {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+/* The zone's name, tappable: the name and a pencil, cut short before the stepper. */
+.pe-zn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  text-align: left;
+}
+.pe-zn b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 19px;
+  font-weight: 800;
+}
+.pe-zn .i {
+  width: 18px;
+  height: 18px;
+  color: var(--hero);
+}
+.pe-zc {
+  font-size: 15px;
+  color: var(--ink2);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pe-zc b {
+  color: var(--ink);
+  font-weight: 800;
+}
+.pe-more {
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1.5px dashed var(--heros);
+  color: var(--hero);
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.pe-more .i {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.6;
+}
+/* A name is ordinary text, not a pond code: Thai at the field's size, a quiet placeholder. */
+.scr .ob-rnf.zn input {
+  font-size: 22px;
+  font-weight: 700;
+}
+.scr .ob-rnf.zn input::placeholder {
+  color: #b9b8c8;
+  font-weight: 600;
+}
+.pe-f {
+  display: grid;
+  gap: 6px;
+}
+.pe-f > span:first-child,
+.pe-cnt > span {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink2);
+}
+.pe-cnt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pe-pre {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--sf);
+  font-size: 17px;
+  line-height: 1.5;
+}
+.pe-pre b {
+  font-weight: 800;
+  color: var(--hero);
+}
+.pe-pre span {
+  font-size: 15px;
+  color: var(--ink3);
+}

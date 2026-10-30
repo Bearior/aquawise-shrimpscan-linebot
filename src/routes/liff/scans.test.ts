@@ -303,7 +303,8 @@ describe('POST /scans/:id/measure', () => {
   it('a service that times out or fails answers 502 measure_failed, never a number; refunded, waiting again', async () => {
     const cases: [MeasureAnswer, string][] = [
       [{ ok: false, code: 'TIMEOUT' }, 'timeout'],
-      [{ ok: false, code: 'ERROR', httpStatus: 500 }, 'service'],
+      [{ ok: false, code: 'ERROR', httpStatus: 500 }, 'service_500'],
+      [{ ok: false, code: 'ERROR' }, 'service'],
       [{ ok: true, data: { ...RETAKE, status: 'error', retake_reason: null, error_code: 'sam3_timeout' } }, 'sam3_timeout'],
     ]
     for (const [failure, reason] of cases) {

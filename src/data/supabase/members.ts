@@ -77,6 +77,10 @@ export function supabaseMembers(db: SupabaseClient): MembersRepo {
       const { error } = await db.from('farm_members').update({ status: 'removed', pond_ids: [] }).eq('id', id)
       if (error) throw dbFail('farm_members.remove', error)
     },
+    async setName(id, name) {
+      const { error } = await db.from('farm_members').update({ display_name: name }).eq('id', id)
+      if (error) throw dbFail('farm_members.setName', error)
+    },
     async join({ farmId, farmKey, lineUserId, role, name, pondIds, inviteId }) {
       // ON CONFLICT DO UPDATE touches only these columns: a returning person keeps joined_at,
       // and a name left out keeps the one on the row (line-bot routes/invites.ts accept).

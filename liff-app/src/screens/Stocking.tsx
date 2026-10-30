@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/api/client'
 import type { Stocking as StockingData } from '@/api/types'
+import { DateField, DatePickerSheet } from '@/components/date-picker'
 import { Page } from '@/components/Page'
 import { Btn, Chip, ErrorState, Head2, Head3, InlineError, Skeleton } from '@/components/ui'
-import { fmtDayYear, fmtInt } from '@/lib/format'
+import { daysBetween, fmtInt } from '@/lib/format'
 import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
-import { useToast } from '@/session'
+import { useSession, useToast } from '@/session'
 
 const SURVIVAL: [number | null, string][] = [
   [0.7, '70%'],
@@ -19,7 +20,9 @@ const SURVIVAL: [number | null, string][] = [
 function Form({ pondId, initial }: { pondId: string; initial: StockingData }) {
   const navigate = useNavigate()
   const toast = useToast()
+  const { session } = useSession()
   const [on, setOn] = useState(initial.stockedOn ?? '')
+  const [picking, setPicking] = useState(false)
   const [count, setCount] = useState(initial.count ? String(initial.count) : '')
   const [survival, setSurvival] = useState<number | null>(initial.survival)
   const [busy, setBusy] = useState(false)
@@ -44,6 +47,35 @@ function Form({ pondId, initial }: { pondId: string; initial: StockingData }) {
       title="ข้อมูลลงกุ้ง"
       back={P.pond(pondId)}
       two
+      over={
+        picking ? (
+          <DatePickerSheet
+            title="ลงกุ้งวันไหนคะ"
+            value={on || null}
+            today={session.today}
+            max={session.today}
+            onPick={(d) => {
+              setOn(d)
+              setPicking(false)
+            }}
+            onCancel={() => setPicking(false)}
+            footer={
+              on ? (
+                <button
+                  type="button"
+                  className="dp-clear"
+                  onClick={() => {
+                    setOn('')
+                    setPicking(false)
+                  }}
+                >
+                  ไม่ใส่วันลงกุ้ง
+                </button>
+              ) : null
+            }
+          />
+        ) : null
+      }
       foot={
         <>
           <Btn kind="s" onClick={() => navigate(P.pond(pondId))}>
@@ -58,10 +90,13 @@ function Form({ pondId, initial }: { pondId: string; initial: StockingData }) {
       <Head2 t="ใส่ครั้งเดียวพอค่ะ" d="น้ำใช้คิดว่ากุ้งในบ่อกี่ตัน · ประมาณได้ แก้ทีหลังได้" />
       <div className="grp">
         <Head3 t="ลงกุ้งวันที่" />
-        <label className="inp">
-          <input type="date" value={on} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setOn(e.target.value)} aria-label="ลงกุ้งวันที่" />
-        </label>
-        {on ? <span className="l5 mut">{fmtDayYear(on)}</span> : null}
+        <DateField
+          iso={on || null}
+          placeholder="แตะเพื่อเลือกวัน"
+          label="ลงกุ้งวันที่"
+          onOpen={() => setPicking(true)}
+          chip={on ? <span className="dp-chip">{daysBetween(on, session.today) === 0 ? 'วันนี้' : `${daysBetween(on, session.today)} วันก่อน`}</span> : null}
+        />
       </div>
       <div className="grp">
         <Head3 t="ลงกี่ตัว" />

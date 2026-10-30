@@ -7,7 +7,7 @@ const member = (role: MemberRow['role'], id = 'm1'): MemberRow => ({ id, farmId:
 
 describe('settingsFromJson', () => {
   it('a row never saved, or not an object, is all defaults', () => {
-    for (const raw of [undefined, null, {}, [], 'x']) expect(settingsFromJson(raw)).toEqual({ notify: NOTIFY_DEFAULTS, perms: {}, acks: {} })
+    for (const raw of [undefined, null, {}, [], 'x']) expect(settingsFromJson(raw)).toEqual({ notify: NOTIFY_DEFAULTS, perms: {}, acks: {}, zones: {} })
   })
 
   it('keeps what is the right type and drops the rest', () => {

@@ -12,6 +12,7 @@ export const P = {
   measure: (scanIds: string[]) => `${A}/inbox/measure?ids=${scanIds.map(encodeURIComponent).join(',')}`,
   overview: `${A}/overview`,
   ponds: `${A}/ponds`,
+  pondsEdit: `${A}/ponds/edit`,
   pond: (id: string) => `${A}/ponds/${encodeURIComponent(id)}`,
   stocking: (id: string) => `${A}/ponds/${encodeURIComponent(id)}/stocking`,
   history: (id: string) => `${A}/ponds/${encodeURIComponent(id)}/history`,

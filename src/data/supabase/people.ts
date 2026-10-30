@@ -40,5 +40,19 @@ export function supabasePeople(db: SupabaseClient): PeopleRepo {
     },
 
     stampScanOnly: (lineUserId, name) => stampScanOnly(db, lineUserId, name),
+
+    async setPicture(lineUserId, pictureUrl) {
+      const { error } = await db.from('line_users').update({ picture_url: pictureUrl }).eq('id', lineUserId)
+      if (error) throw dbFail('line_users picture_url', error)
+    },
+
+    async pictures(lineUserIds) {
+      const out = new Map<string, string>()
+      if (!lineUserIds.length) return out
+      const { data, error } = await db.from('line_users').select('id, picture_url').in('id', lineUserIds)
+      if (error) throw dbFail('line_users pictures', error)
+      for (const r of (data as { id: string; picture_url: string | null }[] | null) ?? []) if (r.picture_url) out.set(r.id, r.picture_url)
+      return out
+    },
   }
 }

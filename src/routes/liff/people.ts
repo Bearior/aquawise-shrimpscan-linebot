@@ -40,6 +40,7 @@ import { liffUrl } from '../../handlers/webhook.js'
 import { handle, type GetRepos } from './handle.js'
 import { oneAtATime } from './lock.js'
 import { savedTodayByPond } from './overview.js'
+import { picturesOf } from './profile.js'
 import { sessionFor } from './session.js'
 
 /** line-bot's INVITE_TTL_DAYS. */
@@ -96,7 +97,7 @@ function codesOf(p: People, ids: string[]): string[] {
   return p.ponds.filter((x) => ids.includes(x.id)).map((x) => x.code)
 }
 
-function memberView(p: People, m: MemberRow, savedToday: Map<string, ScanRow>): Member {
+function memberView(p: People, m: MemberRow, savedToday: Map<string, ScanRow>, pictures: Map<string, string>): Member {
   const theirs = p.ponds.filter((x) => m.pondIds.includes(x.id))
   const zones = [...new Set(theirs.map((x) => zoneOf(x.code)))]
   const done = theirs.filter((x) => savedToday.has(x.id)).length
@@ -109,6 +110,7 @@ function memberView(p: People, m: MemberRow, savedToday: Map<string, ScanRow>): 
   return {
     id: m.id,
     name: displayName(m),
+    pictureUrl: pictures.get(m.lineUserId) ?? null,
     role: m.role,
     scope,
     joined: m.role === 'owner' ? 'เจ้าของฟาร์ม' : m.joinedAt ? `เข้าร่วม ${fmtDayYear(bangkokDay(new Date(m.joinedAt)))}` : 'เข้าร่วมแล้ว',
@@ -195,9 +197,10 @@ export function peopleRouter(getRepos: GetRepos): Router {
     handle(getRepos, async ({ req, repos, ctx }): Promise<MembersResponse> => {
       const { farm, me } = requireFarm(ctx)
       const p = await peopleOf(repos, farm, me)
-      const [savedToday, invites] = await Promise.all([
+      const [savedToday, invites, pictures] = await Promise.all([
         savedTodayByPond(repos, farm.id, p.today),
         me.role === 'owner' ? repos.invites.pendingOf(farm.createdBy) : Promise.resolve([] as InviteRow[]),
+        picturesOf(repos, p.members),
       ])
       const covered = new Set(p.members.filter((m) => m.role !== 'owner').flatMap((m) => codesOf(p, m.pondIds).map(zoneOf)))
       const joins = p.members
@@ -205,7 +208,7 @@ export function peopleRouter(getRepos: GetRepos): Router {
         .sort((a, b) => b.joinedAt!.localeCompare(a.joinedAt!))
         .slice(0, ACTIVITY_MAX)
       return {
-        members: p.members.map((m) => memberView(p, m, savedToday)),
+        members: p.members.map((m) => memberView(p, m, savedToday, pictures)),
         invites: invites.filter((i) => closedReason(i, p.members) === null).map((i) => inviteView(req, p, i)),
         activity: joins.map((m) => {
           const day = bangkokDay(new Date(m.joinedAt!))
@@ -243,7 +246,7 @@ export function peopleRouter(getRepos: GetRepos): Router {
   )
 
   const pondsView = async (repos: Repos, p: People, m: MemberRow): Promise<MemberPondsResponse> => ({
-    member: memberView(p, m, await savedTodayByPond(repos, p.farm.id, p.today)),
+    member: memberView(p, m, await savedTodayByPond(repos, p.farm.id, p.today), await picturesOf(repos, [m])),
     pondIds: p.ponds.filter((x) => m.pondIds.includes(x.id)).map((x) => x.id),
     ponds: p.ponds.map((x) => ({
       id: x.id,
@@ -286,7 +289,7 @@ export function peopleRouter(getRepos: GetRepos): Router {
     const [p, m, settings] = await Promise.all([peopleOf(repos, farm, me), repos.members.byId(farm.id, id), repos.settings.read(farm.id)])
     if (!m) throw new ApiError(404, 'not_found')
     return {
-      member: memberView(p, m, await savedTodayByPond(repos, farm.id, p.today)),
+      member: memberView(p, m, await savedTodayByPond(repos, farm.id, p.today), await picturesOf(repos, [m])),
       pondsLabel: pondsLabel(codesOf(p, m.pondIds), zoneOf),
       perms: permsOf(settings, m),
       defaults: DEFAULTS[m.role],

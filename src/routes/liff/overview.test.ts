@@ -4,6 +4,7 @@ import { createApp } from '../../app.js'
 import { createMemoryRepos, type MemoryRepos, type MemoryState } from '../../data/memory.js'
 import { UNMEASURED, type FarmRow, type MemberRow, type NetRow, type PondRow, type ScanRow } from '../../data/types.js'
 import { addDays, bangkokDay } from '../../domain/farm.js'
+import { REMIND_AT } from '../../domain/settings.js'
 
 const KEYS = ['ALLOW_DEV_LIFF_AUTH', 'LIFF_DEV_USER_ID', 'K_SERVICE', 'NODE_ENV', 'SUPABASE_URL'] as const
 const saved: Record<string, string | undefined> = {}
@@ -89,7 +90,16 @@ describe('GET /overview', () => {
     const o = res.body
     expect(o).toMatchObject({ farmName: 'ฟาร์มสายน้ำ', today: TODAY, pondCount: 3, targetPerKg: 40 })
     expect(o.tiles).toEqual({ ready: { n: 1, tonnes: 2 }, good: { n: 0 }, watch: { n: 0 }, urgent: { n: 2, slow: 1, missing: 1 } })
-    expect(o.photosToday).toEqual({ sent: 2, total: 3, missing: ['A02'] })
+    expect(o.photosToday).toEqual({
+      sent: 2,
+      total: 3,
+      missing: ['A02'],
+      zones: [
+        { zone: 'A', name: null, done: 1, total: 2 },
+        { zone: 'B', name: null, done: 1, total: 1 },
+      ],
+      remindAt: REMIND_AT,
+    })
     expect(o.soon.rows).toEqual([{ pondId: 'p1', pondCode: 'A01', date: addDays(TODAY, 3), perKg: 45, abw: 22, tonnes: 2 }])
     expect(o.queueDays).toHaveLength(14)
     expect(o.queueDays[3]).toEqual({ date: addDays(TODAY, 3), n: 1 })

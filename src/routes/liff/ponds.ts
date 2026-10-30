@@ -186,10 +186,10 @@ export function pondsRouter(getRepos: GetRepos): Router {
       const { farm, me } = requireFarm(ctx)
       noWorker(me)
       const view = await farmView(repos, farm, me)
-      const ponds = await farmTiles(repos, view)
+      const [ponds, settings] = await Promise.all([farmTiles(repos, view), repos.settings.read(farm.id)])
       const zones: ZoneSummary[] = [...new Set(ponds.map((t) => t.zone))].map((zone) => {
         const zt = ponds.filter((t) => t.zone === zone)
-        return { zone, caretaker: zt[0]?.caretaker ?? null, total: zt.length, photoToday: zt.filter((t) => t.photoToday).length }
+        return { zone, name: settings.zones[zone] ?? null, caretaker: zt[0]?.caretaker ?? null, total: zt.length, photoToday: zt.filter((t) => t.photoToday).length }
       })
       return { zones, ponds }
     }),

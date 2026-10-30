@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/api/client'
-import { Page, Sheet } from '@/components/Page'
+import { Page } from '@/components/Page'
 import { Icon } from '@/components/Icon'
+import { CountStepper, PondNameSheet, ZoneNameSheet } from '@/components/farm-layout'
 import { Btn, InlineError } from '@/components/ui'
 import { WORKER } from '@/copy/th'
 import { ApiError } from '@/lib/api-fetch'
+import { MAX_PER_ZONE, MAX_PONDS, defaultCode, nextZoneLetter, zoneLabel } from '@/lib/farm-layout'
 import { P } from '@/routes'
 import { useSession } from '@/session'
 import welcomeBand from '@/assets/onboarding/welcome-band.webp'
@@ -13,21 +15,20 @@ import celebrateBand from '@/assets/onboarding/celebrate-band.webp'
 
 type Step = 'found' | 'gate' | 'name' | 'zones' | 'ready'
 
-/** One zone of the farm: its letter, how many ponds, and any pond renamed (by place in the zone). */
+/**
+ * One zone of the farm: its letter, its name if the owner gave one ('' while
+ * not), how many ponds, and any pond renamed (by place in the zone).
+ */
 interface Zone {
   letter: string
+  name: string
   count: number
   names: Record<number, string>
 }
 
-const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-const MAX_PER_ZONE = 60
-/** The server's own limits (src/routes/liff/session.ts parseStart). */
-const MAX_PONDS = 300
-const MAX_CODE = 20
 const CODE_KEY = 'ss.joinCode'
 
-const pondName = (z: Zone, i: number) => z.names[i] ?? `${z.letter}${String(i + 1).padStart(2, '0')}`
+const pondName = (z: Zone, i: number) => z.names[i] ?? defaultCode(z.letter, i)
 const pondsOf = (z: Zone) => Array.from({ length: z.count }, (_, i) => pondName(z, i))
 
 function readCode(): string {
@@ -64,30 +65,6 @@ function CodeField({ value, onChange, bad, label, max }: { value: string; onChan
   )
 }
 
-/**
- * The pond count typed straight in. It holds what is typed (an empty box
- * while the old number is cleared) and hands on each whole number; leaving
- * the box puts back the count that stands.
- */
-function CountField({ value, onCount, label }: { value: number; onCount: (n: number) => void; label: string }) {
-  const [draft, setDraft] = useState<string | null>(null)
-  return (
-    <input
-      className="mono"
-      inputMode="numeric"
-      value={draft ?? String(value)}
-      onFocus={(e) => e.target.select()}
-      onChange={(e) => {
-        const d = e.target.value.replace(/\D/g, '').slice(0, 3)
-        setDraft(d)
-        if (Number(d) > 0) onCount(Number(d))
-      }}
-      onBlur={() => setDraft(null)}
-      aria-label={label}
-    />
-  )
-}
-
 /** A picture across the top that fades into the page, with น้ำ's line on it. */
 function Hero({ img, children, tall }: { img: string; children?: ReactNode; tall?: boolean }) {
   return (
@@ -107,6 +84,9 @@ function Hero({ img, children, tall }: { img: string; children?: ReactNode; tall
  * 3. Zones and ponds on one page (Codex concept z1,
  *    docs/shrimpscan-onboarding-zones): a card a zone with − and + for its
  *    ponds, the ponds as chips (a tap renames one), + เพิ่มโซน under them.
+ *    Round 3 (Bear, 2026-10-31): a tap on โซน A names the zone. The name is
+ *    never asked for and never fixed: blank reads โซน A, and the owner can
+ *    change it any day on แก้ไขโซนและบ่อ.
  * 4. Done, after line-bot's FarmCreated: the picture, what is ready, what next.
  *
  * Someone with a farm in น้องน้ำ (same LINE provider) just confirms it.
@@ -120,8 +100,9 @@ export default function Start() {
   const [invite, setInvite] = useState(false)
   const [codeBad, setCodeBad] = useState(false)
   const [name, setName] = useState('')
-  const [zones, setZones] = useState<Zone[]>([{ letter: 'A', count: 10, names: {} }])
-  const [rename, setRename] = useState<{ zone: number; i: number; rest: string } | null>(null)
+  const [zones, setZones] = useState<Zone[]>([{ letter: 'A', name: '', count: 10, names: {} }])
+  const [rename, setRename] = useState<{ zone: number; i: number } | null>(null)
+  const [naming, setNaming] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
 
@@ -314,24 +295,21 @@ export default function Start() {
       const others = total - zones[i]!.count
       setZone(i, { count: Math.max(1, Math.min(MAX_PER_ZONE, MAX_PONDS - others, Math.round(n) || 1)) })
     }
-    const nextLetter = LETTERS.split('').find((l) => !zones.some((z) => z.letter === l)) ?? null
+    const nextLetter = nextZoneLetter(zones.map((z) => z.letter))
     const r = rename ? zones[rename.zone]! : null
-    const newName = r && rename ? `${r.letter}${rename.rest.trim().toUpperCase()}` : ''
-    const clash = r && rename ? newName !== pondName(r, rename.i).toUpperCase() && used.has(newName) : false
-    // The server files a pond under its leading Latin letters: 'AB1' would be zone AB, not A.
-    const strays = rename ? /^[A-Za-z]/.test(rename.rest.trim()) : false
-    const renameBad = clash ? `มีบ่อชื่อ ${newName} แล้วค่ะ` : strays ? `ต่อจาก ${r?.letter} ด้วยตัวเลขหรือคำไทยค่ะ` : null
+    const nz = naming !== null ? zones[naming]! : null
     // A renamed pond can meet one + adds later (A11 renamed, then the 11th pond).
     const dup = ponds.find((p, i) => ponds.findIndex((q) => q.toUpperCase() === p.toUpperCase()) !== i) ?? null
-    const saveRename = () => {
-      if (!rename || !r || !rename.rest.trim() || renameBad) return
+    const saveRename = (code: string) => {
+      if (!rename || !r) return
       const names = { ...r.names }
       // Typed back to its own A01 name: not a rename any more.
-      if (newName === `${r.letter}${String(rename.i + 1).padStart(2, '0')}`) delete names[rename.i]
-      else names[rename.i] = newName
+      if (code === defaultCode(r.letter, rename.i)) delete names[rename.i]
+      else names[rename.i] = code
       setZone(rename.zone, { names })
       setRename(null)
     }
+    const zoneNames = Object.fromEntries(zones.filter((z) => z.name).map((z) => [z.letter, z.name]))
 
     return (
       <Page
@@ -339,68 +317,49 @@ export default function Start() {
         back={() => setStep('name')}
         step={[2, 2]}
         foot={
-          <Btn busy={busy} disabled={busy || !total || Boolean(dup)} onClick={() => void submit({ name: name.trim(), ponds, code: readCode() || code.trim() || undefined })}>
+          <Btn busy={busy} disabled={busy || !total || Boolean(dup)} onClick={() => void submit({ name: name.trim(), ponds, zoneNames, code: readCode() || code.trim() || undefined })}>
             เสร็จ · {total} บ่อ
           </Btn>
         }
         over={
           rename && r ? (
-            <Sheet onCancel={() => setRename(null)} label="เปลี่ยนชื่อบ่อ" className="ob-rn">
-              <b className="l2">เปลี่ยนชื่อบ่อ {pondName(r, rename.i)}</b>
-              <span className="l5 mut">ขึ้นต้นด้วย {r.letter} เสมอ บ่อจะได้อยู่ในโซน {r.letter} ค่ะ</span>
-              <form
-                className={`ob-rnf${renameBad ? ' bad' : ''}`}
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  saveRename()
-                }}
-              >
-                <span className="mono">{r.letter}</span>
-                <input
-                  className="mono"
-                  value={rename.rest}
-                  maxLength={MAX_CODE - r.letter.length}
-                  onChange={(e) => setRename({ ...rename, rest: e.target.value })}
-                  aria-label={`ชื่อบ่อต่อจาก ${r.letter}`}
-                  autoFocus
-                />
-              </form>
-              {renameBad ? <span className="fielderr">{renameBad}</span> : null}
-              <Btn disabled={!rename.rest.trim() || Boolean(renameBad)} onClick={saveRename}>
-                ใช้ชื่อนี้
-              </Btn>
-            </Sheet>
+            <PondNameSheet zone={r.letter} current={pondName(r, rename.i)} taken={(c) => used.has(c.toUpperCase())} onSave={saveRename} onCancel={() => setRename(null)} />
+          ) : nz && naming !== null ? (
+            <ZoneNameSheet
+              zone={nz.letter}
+              name={nz.name || null}
+              onSave={(n) => {
+                setZone(naming, { name: n })
+                setNaming(null)
+              }}
+              onCancel={() => setNaming(null)}
+            />
           ) : null
         }
       >
         <div className="ob-head">
           <h1>โซนและบ่อของพี่</h1>
-          <p>เพิ่มโซน แล้วบอกว่ามีกี่บ่อ แก้ทีหลังได้ค่ะ</p>
+          <p>เพิ่มโซน แล้วบอกว่ามีกี่บ่อ ชื่อโซนจะตั้งหรือไม่ตั้งก็ได้ แก้ทีหลังได้ค่ะ</p>
         </div>
         <span className="ob-sum">
           <b className="mono">{zones.length}</b> โซน · <b className="mono">{total}</b> บ่อ
         </span>
         {zones.map((z, i) => (
-          <section className="ob-zone" key={z.letter} aria-label={`โซน ${z.letter}`}>
+          <section className="ob-zone" key={z.letter} aria-label={zoneLabel(z.letter, z.name)}>
             <div className="ob-zh">
               <span className="ob-zl" aria-hidden="true">
                 {z.letter}
               </span>
-              <b>โซน {z.letter}</b>
-              <div className="ob-step" role="group" aria-label={`จำนวนบ่อในโซน ${z.letter}`}>
-                <button type="button" aria-label="ลดบ่อ" disabled={z.count <= 1} onClick={() => setCount(i, z.count - 1)}>
-                  <Icon n="minus" />
-                </button>
-                <CountField value={z.count} onCount={(n) => setCount(i, n)} label={`บ่อในโซน ${z.letter}`} />
-                <button type="button" aria-label="เพิ่มบ่อ" disabled={z.count >= MAX_PER_ZONE || total >= MAX_PONDS} onClick={() => setCount(i, z.count + 1)}>
-                  <Icon n="plus" />
-                </button>
-              </div>
+              <button type="button" className="pe-zn" onClick={() => setNaming(i)} aria-label={`ตั้งชื่อ${zoneLabel(z.letter, z.name)}`}>
+                <b>{zoneLabel(z.letter, z.name)}</b>
+                <Icon n="edit" />
+              </button>
+              <CountStepper value={z.count} onCount={(n) => setCount(i, n)} max={Math.min(MAX_PER_ZONE, z.count + MAX_PONDS - total)} label={`บ่อในโซน ${z.letter}`} />
               <span className="ob-u">บ่อ</span>
             </div>
             <div className="ob-chips">
               {pondsOf(z).map((p, j) => (
-                <button key={j} type="button" className={`mono${z.names[j] ? ' rn' : ''}`} onClick={() => setRename({ zone: i, i: j, rest: p.slice(z.letter.length) })} aria-label={`บ่อ ${p} แตะเพื่อเปลี่ยนชื่อ`}>
+                <button key={j} type="button" className={`mono${z.names[j] ? ' rn' : ''}`} onClick={() => setRename({ zone: i, i: j })} aria-label={`บ่อ ${p} แตะเพื่อเปลี่ยนชื่อ`}>
                   {p}
                 </button>
               ))}
@@ -408,7 +367,7 @@ export default function Start() {
             <div className="ob-zf">
               <span>
                 <Icon n="edit" />
-                แตะชื่อบ่อเพื่อเปลี่ยนชื่อ
+                แตะชื่อโซนหรือชื่อบ่อเพื่อเปลี่ยน
               </span>
               {zones.length > 1 ? (
                 <button type="button" onClick={() => setZones((zs) => zs.filter((_, j) => j !== i))}>
@@ -419,7 +378,7 @@ export default function Start() {
           </section>
         ))}
         {nextLetter && total < MAX_PONDS ? (
-          <button type="button" className="ob-add" onClick={() => setZones((zs) => [...zs, { letter: nextLetter, count: Math.min(10, MAX_PONDS - total), names: {} }])}>
+          <button type="button" className="ob-add" onClick={() => setZones((zs) => [...zs, { letter: nextLetter, name: '', count: Math.min(10, MAX_PONDS - total), names: {} }])}>
             <Icon n="plus" />
             เพิ่มโซน {nextLetter}
           </button>

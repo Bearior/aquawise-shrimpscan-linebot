@@ -22,6 +22,7 @@ import type {
   TodayResponse,
   WatchAck,
   WatchItem,
+  ZoneDay,
 } from '../../contract/types.js'
 import { TH } from '../../copy/th.js'
 import { ApiError, requireFarm } from '../../data/context.js'
@@ -33,6 +34,7 @@ import { REMIND_AT } from '../../domain/settings.js'
 import { handle, type GetRepos } from './handle.js'
 import { oneAtATime } from './lock.js'
 import { farmTiles, farmView, nameOf, type FarmView } from './ponds.js'
+import { picturesOf } from './profile.js'
 
 /** Ponds within this many days go on the soon list; within LATER_DAYS on the later list. */
 const SOON_DAYS = 5
@@ -130,7 +132,15 @@ function watchOf(tiles: PondTile[], soon: QueueRow[]): Omit<WatchItem, 'acked'>[
 }
 
 /** The overview from the farm's tiles; `acks` from its settings. */
-export function overviewOf(view: FarmView, tiles: PondTile[], acks: FarmSettings['acks']): Overview {
+/** Each zone's scans today, in the farm's zone order. */
+function zoneDays(tiles: PondTile[], names: FarmSettings['zones']): ZoneDay[] {
+  return [...new Set(tiles.map((t) => t.zone))].map((zone) => {
+    const zt = tiles.filter((t) => t.zone === zone)
+    return { zone, name: names[zone] ?? null, done: zt.filter((t) => t.photoToday).length, total: zt.length }
+  })
+}
+
+export function overviewOf(view: FarmView, tiles: PondTile[], settings: FarmSettings): Overview {
   const row = (t: PondTile): QueueRow => ({ pondId: t.id, pondCode: t.code, date: t.reachOn!, perKg: t.perKg!, abw: t.abw!, tonnes: tonnesOf(view, t.id) })
   const known = tiles
     .filter((t) => t.daysToTarget !== null && t.reachOn !== null && t.perKg !== null && t.abw !== null)
@@ -150,14 +160,20 @@ export function overviewOf(view: FarmView, tiles: PondTile[], acks: FarmSettings
     today: view.today,
     pondCount: tiles.length,
     targetPerKg: view.targetPerKg,
-    watch: withAcks(watchOf(tiles, soon), acks),
+    watch: withAcks(watchOf(tiles, soon), settings.acks),
     tiles: {
       ready: { n: ready.length, tonnes: round1(ready.reduce((a, t) => a + tonnesOf(view, t.id), 0)) },
       good: { n: tiles.filter((t) => t.status === 'good').length },
       watch: { n: tiles.filter((t) => t.status === 'watch').length },
       urgent: { n: urgent.length + missing.length, slow: urgent.length, missing: missing.length },
     },
-    photosToday: { sent: tiles.filter((t) => t.photoToday).length, total: tiles.length, missing: missing.map((t) => t.code) },
+    photosToday: {
+      sent: tiles.filter((t) => t.photoToday).length,
+      total: tiles.length,
+      missing: missing.map((t) => t.code),
+      zones: zoneDays(tiles, settings.zones),
+      remindAt: settings.notify.remindWorkers ? REMIND_AT : null,
+    },
     queueDays: Array.from({ length: LATER_DAYS }, (_, i) => {
       const date = addDays(view.today, i)
       return { date, n: known.filter((t) => t.reachOn === date).length }
@@ -207,7 +223,7 @@ export function overviewRouter(getRepos: GetRepos): Router {
       need(me, 'farmOverview')
       const view = await farmView(repos, farm, me)
       const [tiles, settings] = await Promise.all([farmTiles(repos, view), repos.settings.read(farm.id)])
-      return overviewOf(view, tiles, settings.acks)
+      return overviewOf(view, tiles, settings)
     }),
   )
 
@@ -222,7 +238,7 @@ export function overviewRouter(getRepos: GetRepos): Router {
       return oneAtATime(`settings:${farm.id}`, async () => {
         const view = await farmView(repos, farm, me)
         const [tiles, settings] = await Promise.all([farmTiles(repos, view), repos.settings.read(farm.id)])
-        const items = overviewOf(view, tiles, settings.acks).watch
+        const items = overviewOf(view, tiles, settings).watch
         if (!items.some((w) => w.key === key && w.ackable)) throw new ApiError(404, 'not_found')
         const ack = { by: me.name || (me.role === 'owner' ? TH.ownerFallback : TH.someone), at: fmtTime(new Date()) }
         // Acks of items that are gone (a pond harvested, a slow list that changed key) go with this write.
@@ -282,10 +298,11 @@ export function overviewRouter(getRepos: GetRepos): Router {
       need(me, 'farmOverview')
       const view = await farmView(repos, farm, me)
       const since = addDays(view.today, -(HISTORY_WEEKS * 7 - 1))
-      const [today, settings, days] = await Promise.all([
+      const [today, settings, days, pictures] = await Promise.all([
         savedTodayByPond(repos, farm.id, view.today),
         repos.settings.read(farm.id),
         repos.scans.scanDays(farm.id, since),
+        picturesOf(repos, view.members),
       ])
       const pondRow = (p: { id: string; code: string }): TeamPond => {
         const s = today.get(p.id)
@@ -301,6 +318,7 @@ export function overviewRouter(getRepos: GetRepos): Router {
         people.push({
           memberId: m.id,
           name: m.name || TH.someone,
+          pictureUrl: pictures.get(m.lineUserId) ?? null,
           role: m.role,
           pondsLabel: pondsLabel(theirs.map((p) => p.code), zoneOf),
           done: times.length,

@@ -101,9 +101,11 @@ function outcomeOf(result: SizingResult<SizingMeasureResponse>, row: ScanRow, ne
   if (!result.ok) {
     if (result.code === 'NOT_CONFIGURED') return { ok: false, error: new ApiError(503, 'measure_not_configured'), patch: {}, reached: false }
     const timeout = result.code === 'TIMEOUT'
+    // The service's own status on the screen ('service_401'), so a bad URL or secret is told from an outage.
+    const why = timeout ? 'timeout' : result.httpStatus ? `service_${result.httpStatus}` : 'service'
     return {
       ok: false,
-      error: new ApiError(502, 'measure_failed', timeout ? 'timeout' : 'service'),
+      error: new ApiError(502, 'measure_failed', why),
       patch: timeout ? spent(0, TIMEOUT_ESTIMATED_ATTEMPTS) : {},
       reached: true,
     }

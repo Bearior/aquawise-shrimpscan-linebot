@@ -87,7 +87,12 @@ export interface Session {
 
 /* ---------- start (O2 to O6) ---------- */
 
-export type StartRequest = { useFarmId: string } | { name: string; ponds: string[]; code?: string }
+/**
+ * A new farm: its name, every pond's name, and the names the owner gave
+ * zones, by zone letter ({ A: 'หน้าบ้าน' }). A zone is still the leading
+ * letters of its ponds' names; its name is only what people read.
+ */
+export type StartRequest = { useFarmId: string } | { name: string; ponds: string[]; code?: string; zoneNames?: Record<string, string> }
 
 /**
  * รหัสเข้าร่วม: the door before a new farm, as in น้องน้ำ's beta gate. One
@@ -127,7 +132,10 @@ export interface PondTile {
 }
 
 export interface ZoneSummary {
+  /** The zone's letters, the head of its ponds' names ('A'); '1' for ponds named by number only. */
   zone: string
+  /** What the owner named it ('หน้าบ้าน'); null shows as โซน A. */
+  name: string | null
   caretaker: string | null
   total: number
   photoToday: number
@@ -136,6 +144,23 @@ export interface ZoneSummary {
 export interface PondsResponse {
   zones: ZoneSummary[]
   ponds: PondTile[]
+}
+
+/* ---------- zones and ponds, owner only (แก้ไขโซนและบ่อ) ---------- */
+
+/** PUT /zones/:zone. An empty name takes the name off (back to โซน A). */
+export interface ZoneNamePut {
+  name: string
+}
+
+/** POST /ponds: new ponds, by name. A new zone is ponds with new leading letters. */
+export interface PondsAdd {
+  codes: string[]
+}
+
+/** PATCH /ponds/:id. The name keeps the pond's zone letters at its head. */
+export interface PondRename {
+  code: string
 }
 
 export interface GrowthPoint {
@@ -357,6 +382,8 @@ export interface TeamPond {
 export interface TeamPerson {
   memberId: string
   name: string
+  /** The person's LINE picture, refreshed each time they open the app; null shows their letter. */
+  pictureUrl: string | null
   role: Exclude<Role, 'owner'>
   /** 'F01 ถึง F10'. */
   pondsLabel: string
@@ -456,6 +483,14 @@ export interface WatchAck {
   at: string
 }
 
+/** One zone's scans today, for the overview's สแกนวันนี้ card. */
+export interface ZoneDay {
+  zone: string
+  name: string | null
+  done: number
+  total: number
+}
+
 /** PUT /watch/:key/ack */
 export interface WatchAckPut {
   signature: string
@@ -475,7 +510,15 @@ export interface Overview {
     urgent: { n: number; slow: number; missing: number }
   }
   /** Ponds scanned today (the field name is from when photos were sent in the chat). */
-  photosToday: { sent: number; total: number; missing: string[] }
+  photosToday: {
+    sent: number
+    total: number
+    missing: string[]
+    /** Every zone's day, in zone order: the card draws these, not a list of pond names. */
+    zones: ZoneDay[]
+    /** When น้ำ reminds the people with ponds left ('10:00'); null when the reminder is off. */
+    remindAt: string | null
+  }
   /** 14 days from today: how many ponds reach the target each day. */
   queueDays: { date: string; n: number }[]
   soon: { rows: QueueRow[]; tonnes: number }
@@ -488,6 +531,8 @@ export interface Overview {
 export interface Member {
   id: string
   name: string
+  /** The person's LINE picture, refreshed each time they open the app; null shows their letter. */
+  pictureUrl: string | null
   role: Role
   /** 'ดูแล 10 บ่อ · วันนี้ 10/10', 'ทุกบ่อ'. */
   scope: string
@@ -613,6 +658,8 @@ export type ApiErrorCode =
   | 'net_out_of_range'
   | 'invite_invalid'
   | 'invalid_code'
+  | 'name_taken'
+  | 'too_many_ponds'
   | 'code_required'
   | 'not_found'
   | 'not_built_yet'

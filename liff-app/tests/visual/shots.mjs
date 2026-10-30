@@ -26,6 +26,7 @@ const PAGES = [
   ['o21-overview', 'owner', '/liff/app'],
   ['o22-ponds', 'owner', '/liff/app/ponds'],
   ['o22-ponds-urgent', 'owner', '/liff/app/ponds?f=urgent'],
+  ['o22-ponds-edit', 'owner', '/liff/app/ponds/edit'],
   ['o23-pond-a04', 'owner', '/liff/app/ponds/p-a04'],
   ['o23-pond-d02-urgent', 'owner', '/liff/app/ponds/p-d02'],
   ['o23-pond-f10-missing', 'owner', '/liff/app/ponds/p-f10'],
@@ -45,6 +46,11 @@ const PAGES = [
   ['o33-print-farm', 'owner', '/liff/app/print/farm'],
   ['o34-print-pond', 'owner', '/liff/app/print/pond/p-a04'],
   ['me', 'owner', '/liff/app/me'],
+  ['m-overview', 'manager', '/liff/app'],
+  ['m-ponds', 'manager', '/liff/app/ponds'],
+  ['m-team', 'manager', '/liff/app/team'],
+  ['m-people', 'manager', '/liff/app/people'],
+  ['m-scan', 'manager', '/liff/app/scan'],
   ['w23-today', 'worker', '/liff/app'],
   ['w17-scan', 'worker', '/liff/app/scan'],
   ['o2-start-candidate', 'new', '/liff/app'],
@@ -159,6 +165,46 @@ async function main() {
     await settle(page)
     await page.screenshot({ path: path.join(OUT, 'wflow-3-done.png'), fullPage: true })
     console.log('shot wflow (3)')
+    await page.close()
+  }
+
+  // Round 3: the calendar, แก้ไขโซนและบ่อ and its sheets, a zone named in onboarding.
+  if (!ONLY || ONLY === 'round3') {
+    const page = await ctx.newPage()
+    watch(page, 'round3')
+    await page.goto(withPersona('/liff/app/ponds/p-a04/stocking', 'owner'))
+    await settle(page)
+    await page.locator('.dp-f').click()
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: path.join(OUT, 'r3-1-date-picker.png'), fullPage: true })
+
+    await page.goto(withPersona('/liff/app/ponds/edit', 'owner'))
+    await settle(page)
+    const shotSheet = async (open, name) => {
+      await open()
+      await page.waitForTimeout(500)
+      await page.screenshot({ path: path.join(OUT, name), fullPage: true })
+      await page.locator('.dim').click({ position: { x: 20, y: 20 } })
+      await page.waitForTimeout(300)
+    }
+    await shotSheet(() => page.locator('.pe-zn').first().click(), 'r3-2-zone-name.png')
+    await shotSheet(() => page.getByRole('button', { name: /^บ่อ A03/ }).click(), 'r3-3-pond-rename.png')
+    await shotSheet(() => page.locator('.pe-more').first().click(), 'r3-4-add-ponds.png')
+    await shotSheet(() => page.locator('.ob-add').click(), 'r3-5-add-zone.png')
+
+    await page.goto(withPersona('/liff/app', 'fresh'))
+    await settle(page)
+    await page.getByLabel('รหัสเข้าร่วม').fill('BETA')
+    await page.getByRole('button', { name: 'เริ่มใช้งาน' }).click()
+    await page.getByLabel('ชื่อฟาร์ม').waitFor({ timeout: 10_000 })
+    await page.getByLabel('ชื่อฟาร์ม').fill('ฟาร์มทดลอง')
+    await page.getByRole('button', { name: 'ถัดไป' }).click()
+    await settle(page)
+    await page.screenshot({ path: path.join(OUT, 'r3-6-start-zones.png'), fullPage: true })
+    await page.locator('.pe-zn').first().click()
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: path.join(OUT, 'r3-7-start-zone-name.png'), fullPage: true })
+    console.log('shot round3 (7)')
     await page.close()
   }
 

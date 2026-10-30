@@ -95,7 +95,7 @@ export default function People() {
           return (
             <div key={m.id} className={`pp-item${on ? ' on' : ''}`}>
               <div className="pp-row">
-                <Ava name={m.name} size={46} />
+                <Ava name={m.name} size={46} src={m.pictureUrl} />
                 <div className="tx">
                   <div className="nm">
                     <b>{m.name}</b>

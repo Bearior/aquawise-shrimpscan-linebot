@@ -35,6 +35,8 @@ export interface MemoryLineUser {
   onboarded: boolean
   /** `dsr_erased_at` is set. */
   erased: boolean
+  /** `picture_url`: the LINE profile picture. */
+  pictureUrl?: string | null
 }
 
 /** A `cycles` row: open or closed, with the farm key that wrote it. */
@@ -186,6 +188,10 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
         const m = state.members.find((x) => x.id === id)
         if (m) Object.assign(m, { status: 'removed', pondIds: [] })
       },
+      async setName(id, name) {
+        const m = state.members.find((x) => x.id === id)
+        if (m) m.name = name
+      },
       // UNIQUE (farm_owner_line_user_id, member_line_user_id): one row per farm key and person.
       async join({ farmId, farmKey, lineUserId, role, name, pondIds }) {
         await tick()
@@ -205,6 +211,23 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
       },
       async moveNet(farmId, from, to) {
         for (const p of state.ponds) if (p.farmId === farmId && p.netId === from) p.netId = to
+      },
+      // ponds_live_name_unique (206): one live name per farm, any case.
+      async create({ farmId, codes }) {
+        await tick()
+        const taken = new Set(state.ponds.filter((p) => p.farmId === farmId).map((p) => p.code.toLowerCase()))
+        if (codes.some((c) => taken.has(c.toLowerCase()))) return 'name_taken'
+        const made = codes.map((code): PondRow => ({ id: `pond-${++seq}`, farmId, code, netId: null }))
+        state.ponds.push(...made)
+        return made.map((p) => ({ ...p }))
+      },
+      async rename(pondId, code) {
+        await tick()
+        const p = state.ponds.find((x) => x.id === pondId)
+        if (!p) return 'ok'
+        if (state.ponds.some((x) => x.farmId === p.farmId && x.id !== p.id && x.code.toLowerCase() === code.toLowerCase())) return 'name_taken'
+        p.code = code
+        return 'ok'
       },
     },
     nets: {
@@ -346,6 +369,15 @@ export function createMemoryRepos(seed: Partial<MemoryState> = {}): MemoryRepos 
         } else {
           state.lineUsers.push({ id: lineUserId, platformAccess: 'scan_only', signupSource: OA_CREATED_VIA, onboarded: false, erased: false })
         }
+      },
+      async setPicture(lineUserId, pictureUrl) {
+        const user = state.lineUsers.find((u) => u.id === lineUserId)
+        if (user) user.pictureUrl = pictureUrl
+      },
+      async pictures(lineUserIds) {
+        const out = new Map<string, string>()
+        for (const u of state.lineUsers) if (lineUserIds.includes(u.id) && u.pictureUrl) out.set(u.id, u.pictureUrl)
+        return out
       },
     },
     quota: {

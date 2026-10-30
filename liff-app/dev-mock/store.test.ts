@@ -13,7 +13,15 @@ describe('the mock farm', () => {
     expect(o.pondCount).toBe(60)
     expect(o.tiles.ready).toEqual({ n: 5, tonnes: 21.7 })
     expect(o.tiles.urgent).toEqual({ n: 8, slow: 5, missing: 3 })
-    expect(o.photosToday).toEqual({ sent: 57, total: 60, missing: ['E03', 'E07', 'F10'] })
+    expect(o.photosToday).toMatchObject({ sent: 57, total: 60, missing: ['E03', 'E07', 'F10'], remindAt: '10:00' })
+    expect(o.photosToday.zones.map((z) => [z.zone, z.name, z.done, z.total])).toEqual([
+      ['A', 'หน้าบ้าน', 10, 10],
+      ['B', null, 10, 10],
+      ['C', 'ริมคลอง', 10, 10],
+      ['D', null, 10, 10],
+      ['E', null, 8, 10],
+      ['F', null, 9, 10],
+    ])
     expect(o.soon.rows.map((r) => r.pondCode)).toEqual(['A01', 'A04', 'B02', 'A07', 'A09'])
   })
 
@@ -154,6 +162,25 @@ describe('the mock farm', () => {
     const n = s.addNet('fresh', { shape: 'round', cm: 80 })
     expect(n.isFarmDefault).toBe(true)
     expect(s.ponds('fresh').zones.map((z) => z.zone)).toEqual(['A', 'B'])
+  })
+
+  it('lets the owner name zones, add ponds and zones, and rename a pond inside its zone', () => {
+    const s = new Store()
+    s.setZoneName('owner', 'b', ' ริมถนน ')
+    expect(s.ponds('owner').zones.find((z) => z.zone === 'B')?.name).toBe('ริมถนน')
+    s.setZoneName('owner', 'B', '')
+    expect(s.ponds('owner').zones.find((z) => z.zone === 'B')?.name).toBeNull()
+    const made = s.addPonds('owner', ['A11', 'G01', 'G02'])
+    expect(made.ponds.map((p) => p.code)).toEqual(['A11', 'G01', 'G02'])
+    expect(s.session('owner').farm?.pondCount).toBe(63)
+    expect(s.ponds('owner').zones.map((z) => z.zone)).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'G'])
+    expect(() => s.addPonds('owner', ['a01'])).toThrow(/name_taken/)
+    const a02 = s.ponds('owner').ponds.find((p) => p.code === 'A02')!
+    s.renamePond('owner', a02.id, 'A02หน้า')
+    expect(s.ponds('owner').ponds.some((p) => p.code === 'A02หน้า')).toBe(true)
+    expect(() => s.renamePond('owner', a02.id, 'B99')).toThrow(MockError)
+    expect(() => s.renamePond('owner', a02.id, 'A01')).toThrow(/name_taken/)
+    expect(() => s.addPonds('manager', ['A12'])).toThrow(/not_allowed/)
   })
 
   it('takes an invite once', () => {

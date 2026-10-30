@@ -69,7 +69,8 @@ function emit(level: LogLevel, rawMessage: string, rawMeta?: Record<string, unkn
   const meta = rawMeta ? (redactValue(rawMeta) as Record<string, unknown>) : undefined
   // Deployed: one JSON line per entry, which Cloud Logging and Railway parse.
   if (deployedAs()) {
-    const entry = { severity: level.toUpperCase(), message: `${LOG_PREFIX} ${message}`, timestamp: new Date().toISOString(), ...meta }
+    // `severity` for Cloud Logging, `level` for Railway (docs.railway.com/observability/logs#structured-logs).
+    const entry = { severity: level.toUpperCase(), level, message: `${LOG_PREFIX} ${message}`, timestamp: new Date().toISOString(), ...meta }
     const line = JSON.stringify(entry) + '\n'
     if (level === 'error' || level === 'warn') process.stderr.write(line)
     else process.stdout.write(line)

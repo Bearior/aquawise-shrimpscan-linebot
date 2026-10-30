@@ -143,21 +143,23 @@ async function call<T>(path: string, body: FormData, timeoutMs: number, isValid:
       signal: controller.signal,
     })
     if (!response.ok) {
-      logger.error('[sizing] service answered an error', { path, status: response.status })
+      // The status rides in the message too: Railway's log view drops the meta.
+      logger.error(`[sizing] service answered ${response.status} on ${path}`, { path, status: response.status })
       return { ok: false, code: 'ERROR', httpStatus: response.status }
     }
     const data: unknown = await response.json()
     if (!isValid(data)) {
-      logger.error('[sizing] service answered outside the /v1 contract', { path })
+      logger.error(`[sizing] service answered outside the /v1 contract on ${path}`, { path })
       return { ok: false, code: 'ERROR', httpStatus: response.status }
     }
     return { ok: true, data: data as T }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      logger.error('[sizing] service timed out', { path, timeoutMs })
+      logger.error(`[sizing] service timed out on ${path} after ${timeoutMs} ms`, { path, timeoutMs })
       return { ok: false, code: 'TIMEOUT' }
     }
-    logger.error('[sizing] request failed', { path, error: error instanceof Error ? error.message : String(error) })
+    const why = error instanceof Error ? error.message : String(error)
+    logger.error(`[sizing] request failed on ${path}: ${why}`, { path, error: why })
     return { ok: false, code: 'ERROR' }
   } finally {
     clearTimeout(timer)

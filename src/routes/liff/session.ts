@@ -15,13 +15,16 @@ import type { Repos } from '../../data/types.js'
 import { bangkokDay, scanDailyLimit, TARGET_CHOICES, zoneOf } from '../../domain/farm.js'
 import { accessCode, isValidCode } from '../../domain/gate.js'
 import { effective } from '../../domain/permissions.js'
+import { zoneNameOf } from '../../domain/settings.js'
 import { envName } from '../liff-me.js'
 import { handle, type GetRepos } from './handle.js'
 import { oneAtATime } from './lock.js'
+import { refreshProfile } from './profile.js'
 
 const NAME_MAX = 80
-const PONDS_MAX = 300
-const CODE_MAX = 20
+/** The most ponds a farm has, and the longest pond name (แก้ไขโซนและบ่อ keeps to them too). */
+export const PONDS_MAX = 300
+export const CODE_MAX = 20
 
 export async function sessionFor(repos: Repos, ctx: Ctx, lineName: string | undefined): Promise<Session> {
   if (ctx.blocked) throw new ApiError(403, 'use_nong_nam')
@@ -60,10 +63,10 @@ export async function sessionFor(repos: Repos, ctx: Ctx, lineName: string | unde
 
 const bad = () => new ApiError(400, 'bad_request')
 
-/** The farm name and pond codes, trimmed and checked; `useFarmId` is the guard's. */
-export function parseStart(body: unknown): { name: string; ponds: string[] } {
+/** The farm name, pond codes and zone names, trimmed and checked; `useFarmId` is the guard's. */
+export function parseStart(body: unknown): { name: string; ponds: string[]; zoneNames: Record<string, string> } {
   if (body && typeof body === 'object' && 'useFarmId' in body) throw new ApiError(403, 'use_nong_nam')
-  const b = (body ?? {}) as { name?: unknown; ponds?: unknown }
+  const b = (body ?? {}) as { name?: unknown; ponds?: unknown; zoneNames?: unknown }
   const name = typeof b.name === 'string' ? b.name.trim() : ''
   if (!name || name.length > NAME_MAX) throw bad()
   if (!Array.isArray(b.ponds) || b.ponds.length < 1 || b.ponds.length > PONDS_MAX) throw bad()
@@ -77,7 +80,15 @@ export function parseStart(body: unknown): { name: string; ponds: string[] } {
     seen.add(key)
     ponds.push(code)
   }
-  return { name, ponds }
+  // A name for a zone the ponds do not make is dropped, as is a blank one.
+  if (b.zoneNames !== undefined && (typeof b.zoneNames !== 'object' || b.zoneNames === null || Array.isArray(b.zoneNames))) throw bad()
+  const zones = new Set(ponds.map(zoneOf))
+  const zoneNames: Record<string, string> = {}
+  for (const [zone, raw] of Object.entries((b.zoneNames ?? {}) as Record<string, unknown>)) {
+    const n = zoneNameOf(raw)
+    if (n && zones.has(zone.toUpperCase())) zoneNames[zone.toUpperCase()] = n
+  }
+  return { name, ponds, zoneNames }
 }
 
 /**
@@ -88,7 +99,13 @@ export function parseStart(body: unknown): { name: string; ponds: string[] } {
 export function sessionRouter(getRepos: GetRepos): Router {
   const r = Router()
 
-  r.get('/session', handle(getRepos, ({ req, repos, ctx }) => sessionFor(repos, ctx, req.lineDisplayName)))
+  r.get(
+    '/session',
+    handle(getRepos, async ({ req, repos, ctx }) => {
+      await refreshProfile(repos, ctx, req.lineDisplayName, req.linePictureUrl)
+      return sessionFor(repos, ctx, req.lineDisplayName)
+    }),
+  )
 
   // Checks the code only; nothing is written (src/domain/gate.ts says why).
   r.post(
@@ -114,7 +131,11 @@ export function sessionRouter(getRepos: GetRepos): Router {
         // Read again inside the lock: a start that finished meanwhile made the farm.
         const now = await resolveContext(repos, lineUserId)
         if (!now.farm && !now.blocked) {
-          await repos.farms.createOaFarm({ ownerId: lineUserId, ownerName: req.lineDisplayName ?? null, name: body.name, pondCodes: body.ponds })
+          const farm = await repos.farms.createOaFarm({ ownerId: lineUserId, ownerName: req.lineDisplayName ?? null, name: body.name, pondCodes: body.ponds })
+          if (Object.keys(body.zoneNames).length) {
+            const settings = await repos.settings.read(farm.id)
+            await repos.settings.write(farm.id, { ...settings, zones: body.zoneNames })
+          }
           return resolveContext(repos, lineUserId)
         }
         return now

@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 /** Words that come before a name in a farm ('ลุงพล', 'พี่ชาติ', 'ช่างเอก'): the letter is the name's, not theirs. */
 const PREFIXES = ['ลุง', 'ป้า', 'น้า', 'อา', 'พี่', 'น้อง', 'บัง', 'ช่าง', 'นาย', 'นาง', 'คุณ', 'ตา', 'ยาย']
 /** Thai vowels written before the consonant they follow: the letter is the consonant. */
@@ -23,11 +25,21 @@ export function toneOf(name: string): number {
   return h % 5
 }
 
-/** The person's circle: their first letter on one of five soft tints. */
-export function Ava({ name, size }: { name: string; size?: number }) {
+/**
+ * The person's circle: their LINE picture when there is one, else their
+ * first letter on one of five soft tints. A picture LINE no longer serves
+ * falls back to the letter.
+ */
+export function Ava({ name, size, src }: { name: string; size?: number; src?: string | null }) {
+  const [broken, setBroken] = useState<string | null>(null)
+  const picture = src && src !== broken ? src : null
   return (
-    <span className={`ava c${toneOf(name)}`} style={size ? { width: size, height: size, fontSize: Math.round(size * 0.42) } : undefined} aria-hidden="true">
-      {initialOf(name)}
+    <span
+      className={`ava c${toneOf(name)}${picture ? ' pic' : ''}`}
+      style={size ? { width: size, height: size, fontSize: Math.round(size * 0.42) } : undefined}
+      aria-hidden="true"
+    >
+      {picture ? <img src={picture} alt="" loading="lazy" onError={() => setBroken(picture)} /> : initialOf(name)}
     </span>
   )
 }

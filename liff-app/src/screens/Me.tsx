@@ -11,6 +11,7 @@ import { useSession } from '@/session'
 
 const PERSONAS: [MockPersona, string][] = [
   ['owner', 'เจ้าของ (พี่วิชัย)'],
+  ['manager', 'ผู้จัดการ (น้าศักดิ์)'],
   ['worker', 'ลูกน้อง (ช่างเอก)'],
   ['new', 'มีฟาร์มในน้องน้ำ'],
   ['fresh', 'ยังไม่มีฟาร์ม'],

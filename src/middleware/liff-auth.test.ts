@@ -190,6 +190,32 @@ describe('verifyLiffIdToken middleware', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('carries the LINE picture from the ID token and from /v2/profile, only on LINE’s own https hosts', async () => {
+    process.env.LIFF_CHANNEL_ID = 'login-channel'
+    delete process.env.ALLOW_DEV_LIFF_AUTH
+    const pic = 'https://profile.line-scdn.net/0hAbC'
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ sub: 'Upic', picture: pic }) }) as never
+    const req = { headers: { authorization: `Bearer ${fakeIdToken('login-channel', 'pic')}` } } as { headers: object; linePictureUrl?: string }
+    await verifyLiffIdToken(req as never, fakeRes() as never, vi.fn())
+    expect(req.linePictureUrl).toBe(pic)
+
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/v2.1/verify?access_token=')) return Promise.resolve({ ok: true, json: async () => ({ client_id: 'login-channel' }) })
+      if (url.includes('/v2/profile')) return Promise.resolve({ ok: true, json: async () => ({ userId: 'Upic2', pictureUrl: 'https://profile.line-scdn.net/0hXyZ' }) })
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as never
+    const viaProfile = { headers: { authorization: 'Bearer opaque-picture-token' } } as { headers: object; linePictureUrl?: string }
+    await verifyLiffIdToken(viaProfile as never, fakeRes() as never, vi.fn())
+    expect(viaProfile.linePictureUrl).toBe('https://profile.line-scdn.net/0hXyZ')
+
+    for (const [salt, bad] of [['http', 'http://profile.line-scdn.net/x'], ['host', 'https://evil.example/x.png'], ['look', 'https://line-scdn.net.evil.example/x']]) {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ sub: `U${salt}`, picture: bad }) }) as never
+      const r = { headers: { authorization: `Bearer ${fakeIdToken('login-channel', salt)}` } } as { headers: object; linePictureUrl?: string }
+      await verifyLiffIdToken(r as never, fakeRes() as never, vi.fn())
+      expect(r.linePictureUrl).toBeUndefined()
+    }
+  })
+
   it('leaves the display name unset when LINE gives none', async () => {
     process.env.LIFF_CHANNEL_ID = 'login-channel'
     delete process.env.ALLOW_DEV_LIFF_AUTH

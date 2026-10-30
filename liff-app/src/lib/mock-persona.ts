@@ -1,15 +1,15 @@
 /**
  * Who the backend-free mock (`pnpm mock`) pretends you are.
  *
- * `?as=owner|worker|new|fresh` on any URL picks a persona and keeps it for the
+ * `?as=owner|manager|worker|new|fresh` on any URL picks a persona and keeps it for the
  * tab. Only `pnpm mock` reads it: everywhere else MOCK is false and this module
  * sends nothing, so a real server never sees the header.
  */
 // A plain && (no Boolean()) so a build folds it to false and drops the mock code.
 export const MOCK: boolean = import.meta.env.DEV && import.meta.env.VITE_MOCK_API === '1'
 
-export type MockPersona = 'owner' | 'worker' | 'new' | 'fresh'
-const PERSONAS: MockPersona[] = ['owner', 'worker', 'new', 'fresh']
+export type MockPersona = 'owner' | 'manager' | 'worker' | 'new' | 'fresh'
+const PERSONAS: MockPersona[] = ['owner', 'manager', 'worker', 'new', 'fresh']
 const KEY = 'aw_scan_mock_persona'
 
 export function mockPersona(): MockPersona {

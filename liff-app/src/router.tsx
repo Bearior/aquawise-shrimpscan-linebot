@@ -6,6 +6,7 @@ import { P } from '@/routes'
 import ScanFlow from '@/screens/ScanFlow'
 import Overview from '@/screens/Overview'
 import Ponds from '@/screens/Ponds'
+import PondsEdit from '@/screens/PondsEdit'
 import Pond from '@/screens/Pond'
 import Stocking from '@/screens/Stocking'
 import History from '@/screens/History'
@@ -74,6 +75,7 @@ export const router = createBrowserRouter([
           { path: 'inbox/measure', element: <MeasureFlow /> },
           { path: 'overview', element: <Overview /> },
           { path: 'ponds', element: <Ponds /> },
+          { path: 'ponds/edit', element: <PondsEdit /> },
           { path: 'ponds/:id', element: <Pond /> },
           { path: 'ponds/:id/stocking', element: <Stocking /> },
           { path: 'ponds/:id/history', element: <History /> },

@@ -173,6 +173,8 @@ export function errorText(error: unknown): { title: string; detail?: string; cod
     if (code === 'no_credits') return { title: ERR.noCredits, code }
     if (code === 'not_allowed' || error.status === 403) return { title: ERR.notAllowed, code }
     if (code === 'remeasure_limit') return { title: ERR.remeasureLimit, code }
+    if (code === 'name_taken') return { title: ERR.nameTaken, code }
+    if (code === 'too_many_ponds') return { title: ERR.tooManyPonds, code }
     return { title: ERR.generic, code: `${error.status} ${code}` }
   }
   if (error instanceof TypeError) return { title: ERR.offline }

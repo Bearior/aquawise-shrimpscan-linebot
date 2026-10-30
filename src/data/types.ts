@@ -175,6 +175,8 @@ export interface MembersRepo {
   setPonds(id: string, pondIds: string[]): Promise<void>
   /** `status 'removed'`: the row stays, so a new invite brings the person back. */
   remove(id: string): Promise<void>
+  /** The person's name as LINE has it now (`display_name`). */
+  setName(id: string, name: string): Promise<void>
   /** The membership an invite gives, upserted on the farm key and the person (a removed row comes back). */
   join(input: JoinInput): Promise<void>
 }
@@ -242,14 +244,16 @@ export interface StoredAck {
 /**
  * What the OA keeps per farm in `shrimp_scan_farm_settings.notify` (jsonb).
  * The reminder switches sit at the top level, as migration 211 says; the
- * per-person switches and the farm's รับทราบ ride under `perms` and `acks`
- * until a migration gives them columns of their own.
+ * per-person switches, the farm's รับทราบ and the zone names ride under
+ * `perms`, `acks` and `zones` until a migration gives them columns of their own.
  */
 export interface FarmSettings {
   notify: NotifySettings
   /** By `farm_members.id`: a person's switches once the owner changed any. */
   perms: Record<string, Permissions>
   acks: Record<string, StoredAck>
+  /** By zone letters ('A'): the name the owner gave the zone. A zone without one is โซน A. */
+  zones: Record<string, string>
 }
 
 export interface SettingsRepo {
@@ -262,6 +266,10 @@ export interface SettingsRepo {
 export interface PondsRepo {
   /** The farm's live ponds, by code. */
   ofFarm(farmId: string): Promise<PondRow[]>
+  /** New ponds of the farm, owned by the farm key. `name_taken`: a live pond has one of the names (migration 206). */
+  create(input: { farmId: string; farmKey: string; codes: string[] }): Promise<PondRow[] | 'name_taken'>
+  /** A new name for the pond. `name_taken`: another live pond of the farm has it. */
+  rename(pondId: string, code: string): Promise<'ok' | 'name_taken'>
   /** The pond's own ยอ (`net_id`, `net_id_source 'assigned'`). */
   setNet(pondId: string, netId: string): Promise<void>
   /** Every pond of the farm on ยอ `from` moves to ยอ `to` (a ยอ replaced by a corrected one). */
@@ -358,6 +366,10 @@ export interface PeopleRepo {
    * `ApiError(403, 'not_allowed')` for an erased account.
    */
   stampScanOnly(lineUserId: string, name: string | null): Promise<void>
+  /** Keeps the person's LINE picture on their `line_users` row (`picture_url`, migration 190); a missing row is left missing. */
+  setPicture(lineUserId: string, pictureUrl: string): Promise<void>
+  /** The LINE pictures of these people, by LINE id; anyone without one is left out. */
+  pictures(lineUserIds: string[]): Promise<Map<string, string>>
 }
 
 export interface QuotaRepo {

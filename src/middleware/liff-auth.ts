@@ -14,17 +14,29 @@ import { logger } from '../lib/logger.js'
 
 // Extend Express Request to carry the verified LINE user ID
 // eslint-disable-next-line @typescript-eslint/no-namespace
-declare global { namespace Express { interface Request { lineUserId?: string; lineDisplayName?: string } } }
+declare global { namespace Express { interface Request { lineUserId?: string; lineDisplayName?: string; linePictureUrl?: string } } }
 
-/** Who LINE says signed in: the user id, and the display name when LINE gave one. */
+/** Who LINE says signed in: the user id, and the display name and picture when LINE gave them. */
 export interface LiffIdentity {
   userId: string
   name?: string
+  pictureUrl?: string
 }
 
 /** A display name worth keeping: trimmed, never blank. */
 function nameOf(raw: unknown): string | undefined {
   return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined
+}
+
+/** LINE's profile picture: an https URL on LINE's own hosts, or nothing. */
+function pictureOf(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || raw.length > 500) return undefined
+  try {
+    const u = new URL(raw)
+    return u.protocol === 'https:' && /(^|\.)line-scdn\.net$|(^|\.)line\.me$/.test(u.hostname) ? u.href : undefined
+  } catch {
+    return undefined
+  }
 }
 
 // 5-minute cache keyed by SHA-256 of the token (never stores the raw token).
@@ -85,10 +97,10 @@ async function verifyIdToken(token: string, liffChannelId: string): Promise<Liff
     signal: AbortSignal.timeout(LINE_VERIFY_TIMEOUT_MS),
   })
   if (!res.ok) throw new Error(`LINE id-token verify failed: ${res.status}`)
-  // `name` is in the payload when the LIFF has the profile scope.
-  const payload = (await res.json()) as { sub?: string; name?: string; error?: string }
+  // `name` and `picture` are in the payload when the LIFF has the profile scope.
+  const payload = (await res.json()) as { sub?: string; name?: string; picture?: string; error?: string }
   if (payload.error || !payload.sub) throw new Error(payload.error || 'Missing sub in id-token payload')
-  return { userId: payload.sub, name: nameOf(payload.name) }
+  return { userId: payload.sub, name: nameOf(payload.name), pictureUrl: pictureOf(payload.picture) }
 }
 
 /**
@@ -112,9 +124,9 @@ async function verifyAccessToken(token: string, allowList: string[]): Promise<Li
     signal: AbortSignal.timeout(LINE_VERIFY_TIMEOUT_MS),
   })
   if (!profileRes.ok) throw new Error(`LINE profile fetch failed: ${profileRes.status}`)
-  const profile = (await profileRes.json()) as { userId?: string; displayName?: string }
+  const profile = (await profileRes.json()) as { userId?: string; displayName?: string; pictureUrl?: string }
   if (!profile.userId) throw new Error('Missing userId in profile response')
-  return { userId: profile.userId, name: nameOf(profile.displayName) }
+  return { userId: profile.userId, name: nameOf(profile.displayName), pictureUrl: pictureOf(profile.pictureUrl) }
 }
 
 async function verifyWithLine(token: string): Promise<LiffIdentity> {
@@ -141,7 +153,7 @@ export async function verifyLiffIdentity(token: string): Promise<LiffIdentity> {
   const key = tokenHash(token)
   pruneCacheEntry(key)
   const cached = verifyCache.get(key)
-  if (cached && cached.expiresAt > Date.now()) return { userId: cached.userId, name: cached.name }
+  if (cached && cached.expiresAt > Date.now()) return { userId: cached.userId, name: cached.name, pictureUrl: cached.pictureUrl }
 
   const who = await verifyWithLine(token)
   verifyCache.set(key, { ...who, expiresAt: Date.now() + CACHE_TTL_MS })
@@ -225,6 +237,7 @@ export async function verifyLiffIdToken(req: Request, res: Response, next: NextF
     const who = await verifyLiffIdentity(authHeader.slice(7))
     req.lineUserId = who.userId
     req.lineDisplayName = who.name
+    req.linePictureUrl = who.pictureUrl
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'verify_failed'
     logger.warn('[liff-auth] verify failed:', reason)

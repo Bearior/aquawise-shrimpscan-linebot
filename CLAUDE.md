@@ -132,7 +132,7 @@ out of builds. A new host must be added to `deployedAs()` first.
   no backend on http://localhost:5199/liff/. `dev-mock/mock-api.ts` is a Vite
   plugin; `dev-mock/store.ts` is an in-memory ฟาร์มสายน้ำ (60 ponds, the
   canvas's numbers) typed against `types.ts`, so a contract change breaks it at
-  `tsc` time. `?as=owner|worker|new|fresh` picks the persona;
+  `tsc` time. `?as=owner|manager|worker|new|fresh` picks the persona;
   `POST /api/mock/reset` starts over. Upload `dev-mock/fixtures/yor.jpg` to get
   the canvas's rim guess and dots (F10 reads 13.9 g on the guess, 17.2 g on the
   floor edge). Into a pond whose ยอ is square, upload
@@ -203,9 +203,11 @@ applied to an environment before turning on anything that needs it.
   way line-bot's accept does. Removing a person sets `status 'removed'`.
 - `shrimp_scan_farm_settings.notify` (jsonb) holds the reminder switches at
   the top level and, until they get columns of their own, the owner's
-  per-person switches (`perms`, by `farm_members.id`) and the farm's รับทราบ
-  (`acks`). `src/domain/settings.ts` reads it leniently; every write is a
-  read-modify-write under `oneAtATime('settings:<farmId>')`.
+  per-person switches (`perms`, by `farm_members.id`), the farm's รับทราบ
+  (`acks`) and the zone names (`zones`, by zone letters; a zone is still the
+  leading letters of its ponds' names). `src/domain/settings.ts` reads it
+  leniently; every write is a read-modify-write under
+  `oneAtATime('settings:<farmId>')`.
 - On prod: migration 211 (`shrimp_scan_farm_settings`) and line-bot's 210
   (`shrimp_len_px`, applied 2026-10-29), so a re-read keeps the grams per
   shrimp. A database without 210 still works: the column is dropped from

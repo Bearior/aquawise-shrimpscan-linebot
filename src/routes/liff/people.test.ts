@@ -73,8 +73,8 @@ describe('GET /members', () => {
     const res = await as(OWNER, seeded({ invites: [invite()] })).get('/members')
     expect(res.status).toBe(200)
     expect(res.body.members).toEqual([
-      { id: 'm-owner', name: 'พี่วิชัย', role: 'owner', scope: 'ทุกบ่อ', joined: 'เจ้าของฟาร์ม', isYou: true },
-      { id: 'm-worker', name: 'น้องเอ', role: 'worker', scope: 'ดูแล 2 บ่อ · วันนี้ 0/2', joined: 'เข้าร่วม 2 ก.ย. 2569', isYou: false },
+      { id: 'm-owner', name: 'พี่วิชัย', pictureUrl: null, role: 'owner', scope: 'ทุกบ่อ', joined: 'เจ้าของฟาร์ม', isYou: true },
+      { id: 'm-worker', name: 'น้องเอ', pictureUrl: null, role: 'worker', scope: 'ดูแล 2 บ่อ · วันนี้ 0/2', joined: 'เข้าร่วม 2 ก.ย. 2569', isYou: false },
     ])
     expect(res.body.invites).toEqual([
       { code: 'K7P2QX', url: 'https://liff.line.me/2010188962-test/app/join?invite=K7P2QX', role: 'worker', pondsLabel: 'B01', expiresOn: expect.any(String), daysLeft: 7 },

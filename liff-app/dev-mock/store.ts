@@ -62,7 +62,12 @@ import { centredGuess, fitEllipse, fitRim, insideRim, rimArea, rimBox } from '..
 import { isLighter, weightStats } from '../src/lib/sizes'
 import { ACTIVITY, CANDIDATE, DOTS, F10_HISTORY, FIXED, FIXTURE_ASPECT, GUESS, NOTES, PEOPLE, SQ_DOTS, SQ_FIXED, SQ_GUESS, STOCKED, TODAY, Z2, at, nowIso } from './story'
 
-export type Persona = 'owner' | 'worker' | 'new' | 'fresh'
+export type Persona = 'owner' | 'manager' | 'worker' | 'new' | 'fresh'
+
+/** The LINE pictures the mock hands out (`/mock-avatars/:id`); the people left out show their letter. */
+const PICTURES = new Set(['m-wichai', 'm-sak', 'm-chat', 'm-ek'])
+const pictureOf = (id: string) => (PICTURES.has(id) ? `/mock-avatars/${id}` : null)
+const zoneOfCode = (code: string) => /^[A-Za-z]+/.exec(code)?.[0]?.toUpperCase() ?? '1'
 
 export class MockError extends Error {
   readonly status: number
@@ -219,6 +224,8 @@ interface MFarm {
   acks: Record<string, { signature: string; by: string; at: string }>
   /** สแกนวันนี้'s grid before the saved history starts: ponds scanned each past day. */
   pastDone: Record<string, number>
+  /** The names the owner gave zones, by zone letters. */
+  zoneNames: Record<string, string>
 }
 
 const DEFAULTS: Record<Role, Permissions> = {
@@ -340,6 +347,8 @@ function seedFarm(): MFarm {
     activity: [...ACTIVITY],
     acks: {},
     pastDone: pastDone(ponds.length),
+    // Two zones named, the rest not: the app shows both looks.
+    zoneNames: { A: 'หน้าบ้าน', C: 'ริมคลอง' },
   }
 
   // History: saved scans 15, 10 and 5 days back, and today for every pond scanned this morning.
@@ -443,6 +452,7 @@ function blankFarm(id: string, name: string, owner: { id: string; name: string }
     activity: [],
     acks: {},
     pastDone: {},
+    zoneNames: {},
   }
 }
 
@@ -475,6 +485,7 @@ export class Store {
   farms = new Map<string, MFarm>()
   people: Record<Persona, Who> = {
     owner: { name: 'พี่วิชัย', memberId: 'm-wichai', farmId: 'farm-saina' },
+    manager: { name: 'น้าศักดิ์', memberId: 'm-sak', farmId: 'farm-saina' },
     worker: { name: 'ช่างเอก', memberId: 'm-ek', farmId: 'farm-saina' },
     new: { name: 'พี่สมชาย', memberId: 'm-somchai', farmId: null },
     fresh: { name: 'พี่มานพ', memberId: 'm-manop', farmId: null },
@@ -586,8 +597,9 @@ export class Store {
       const name = body.name.trim()
       if (!name || !body.ponds.length) throw new MockError(400, 'bad_request')
       if (body.code !== undefined && body.code.trim().toUpperCase() === 'WRONG') throw new MockError(403, 'code_required')
-      const ponds = body.ponds.map((code) => ({ code, zone: /^[A-Za-z]+/.exec(code)?.[0]?.toUpperCase() ?? '1' }))
+      const ponds = body.ponds.map((code) => ({ code, zone: zoneOfCode(code) }))
       farm = blankFarm(this.nextId('farm'), name, { id: who.memberId, name: who.name }, ponds)
+      for (const [z, n] of Object.entries(body.zoneNames ?? {})) if (n.trim() && ponds.some((p) => p.zone === z)) farm.zoneNames[z] = n.trim()
     }
     this.farms.set(farm.id, farm)
     who.farmId = farm.id
@@ -667,9 +679,51 @@ export class Store {
     const tiles = farm.ponds.map((p) => this.tile(farm, p, me))
     const zones = [...new Set(farm.ponds.map((p) => p.zone))].map((zone) => {
       const zt = tiles.filter((t) => t.zone === zone)
-      return { zone, caretaker: zt[0]?.caretaker ?? null, total: zt.length, photoToday: zt.filter((t) => t.photoToday).length }
+      return { zone, name: farm.zoneNames[zone] ?? null, caretaker: zt[0]?.caretaker ?? null, total: zt.length, photoToday: zt.filter((t) => t.photoToday).length }
     })
     return { zones, ponds: tiles }
+  }
+
+  /* ---------- แก้ไขโซนและบ่อ (owner) ---------- */
+
+  setZoneName(persona: Persona, zone: string, name: string): void {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const z = zone.toUpperCase()
+    if (!farm.ponds.some((p) => p.zone === z)) throw new MockError(404, 'not_found')
+    const n = name.replace(/\s+/g, ' ').trim()
+    if (n.length > 30) throw new MockError(400, 'bad_request')
+    if (n) farm.zoneNames[z] = n
+    else delete farm.zoneNames[z]
+  }
+
+  addPonds(persona: Persona, codes: string[]): { ponds: { id: string; code: string }[] } {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const clean = codes.map((c) => c.trim())
+    if (!clean.length || clean.length > 60 || clean.some((c) => !c || c.length > 20)) throw new MockError(400, 'bad_request')
+    if (new Set(clean.map((c) => c.toLowerCase())).size !== clean.length) throw new MockError(400, 'bad_request')
+    if (farm.ponds.length + clean.length > 300) throw new MockError(409, 'too_many_ponds')
+    const taken = new Set(farm.ponds.map((p) => p.code.toLowerCase()))
+    if (clean.some((c) => taken.has(c.toLowerCase()))) throw new MockError(409, 'name_taken')
+    const made = blankFarm(farm.id, farm.name, { id: farm.ownerId, name: '' }, clean.map((code) => ({ code, zone: zoneOfCode(code) }))).ponds.map((p) => ({ ...p, id: this.nextId('pond') }))
+    farm.ponds.push(...made)
+    farm.ponds.sort((a, b) => a.code.localeCompare(b.code))
+    // The owner looks after every pond.
+    const owner = farm.members.find((m) => m.id === farm.ownerId)
+    if (owner) owner.pondIds.push(...made.map((p) => p.id))
+    return { ponds: made.map((p) => ({ id: p.id, code: p.code })) }
+  }
+
+  renamePond(persona: Persona, id: string, code: string): void {
+    const { farm, me } = this.ctx(persona)
+    this.ownerOnly(me)
+    const p = this.pond(farm, id)
+    const c = code.trim()
+    if (!c || c.length > 20 || zoneOfCode(c) !== p.zone) throw new MockError(400, 'bad_request')
+    if (farm.ponds.some((x) => x.id !== p.id && x.code.toLowerCase() === c.toLowerCase())) throw new MockError(409, 'name_taken')
+    p.code = c
+    farm.ponds.sort((a, b) => a.code.localeCompare(b.code))
   }
 
   private summary(farm: MFarm, s: MScan, me: MMember): ScanSummary {
@@ -808,7 +862,16 @@ export class Store {
         watch: { n: tiles.filter((t) => t.status === 'watch').length },
         urgent: { n: urgent.length + missing.length, slow: urgent.length, missing: missing.length },
       },
-      photosToday: { sent: tiles.filter((t) => t.photoToday).length, total: tiles.length, missing: missing.map((t) => t.code) },
+      photosToday: {
+        sent: tiles.filter((t) => t.photoToday).length,
+        total: tiles.length,
+        missing: missing.map((t) => t.code),
+        zones: [...new Set(tiles.map((t) => t.zone))].map((zone) => {
+          const zt = tiles.filter((t) => t.zone === zone)
+          return { zone, name: farm.zoneNames[zone] ?? null, done: zt.filter((t) => t.photoToday).length, total: zt.length }
+        }),
+        remindAt: farm.notify.remindWorkers ? '10:00' : null,
+      },
       queueDays: Array.from({ length: 14 }, (_, i) => {
         const date = addDays(TODAY, i)
         return { date, n: known.filter((t) => t.reachOn === date).length }
@@ -1177,6 +1240,7 @@ export class Store {
     return {
       id: m.id,
       name: m.name,
+      pictureUrl: pictureOf(m.id),
       role: m.role,
       scope:
         m.role === 'owner'
@@ -1236,6 +1300,7 @@ export class Store {
         return {
           memberId: m.id,
           name: m.name,
+          pictureUrl: pictureOf(m.id),
           role: m.role,
           pondsLabel: this.pondsLabel(farm, m.pondIds),
           done: times.length,

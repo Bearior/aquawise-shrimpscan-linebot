@@ -103,7 +103,7 @@ export default function TeamToday() {
         return (
           <div className="tm-pc" key={x.memberId}>
             <div className="tm-pch">
-              <Ava name={x.name} size={52} />
+              <Ava name={x.name} size={52} src={x.pictureUrl} />
               <div className="tx">
                 <b>{x.name}</b>
                 <span>

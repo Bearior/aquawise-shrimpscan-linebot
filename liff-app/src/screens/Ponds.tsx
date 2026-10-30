@@ -6,6 +6,7 @@ import { Page, Sheet } from '@/components/Page'
 import { Icon } from '@/components/Icon'
 import { Ava } from '@/components/avatar'
 import { ErrorState, Skeleton } from '@/components/ui'
+import { zoneLabel } from '@/lib/farm-layout'
 import { fmt1 } from '@/lib/format'
 import { KIND, STATUS_PILL, progressTo, tileWord } from '@/lib/pond-words'
 import { useApi } from '@/lib/use-api'
@@ -35,7 +36,7 @@ function ZoneHead({ z }: { z: ZoneSummary }) {
     <div className="pa-zh">
       {z.caretaker ? <Ava name={z.caretaker} /> : <span className="ava zl" aria-hidden="true">{z.zone}</span>}
       <b className="pa-zt">
-        โซน {z.zone}
+        {zoneLabel(z.zone, z.name)}
         {z.caretaker ? <span> · {z.caretaker}</span> : null}
       </b>
       {ok ? (
@@ -56,7 +57,7 @@ function ZoneHead({ z }: { z: ZoneSummary }) {
 }
 
 /** One pond's summary, up from the bottom: the number, the state, and the way into หน้าบ่อ. */
-function PondSheet({ p, target, onOpen, onCancel }: { p: PondTile; target: number; onOpen: () => void; onCancel: () => void }) {
+function PondSheet({ p, zoneName, target, onOpen, onCancel }: { p: PondTile; zoneName: string | null; target: number; onOpen: () => void; onCancel: () => void }) {
   const [tone, label] = STATUS_PILL[p.status]
   const reach = p.daysToTarget === null ? 'ยังไม่รู้' : p.daysToTarget <= 0 ? 'จับได้วันนี้' : `อีก ${p.daysToTarget} วัน`
   return (
@@ -65,7 +66,7 @@ function PondSheet({ p, target, onOpen, onCancel }: { p: PondTile; target: numbe
         <div>
           <b>บ่อ {p.code}</b>
           <span>
-            โซน {p.zone}
+            {zoneLabel(p.zone, zoneName)}
             {p.caretaker ? ` · ${p.caretaker}ดูแล` : ''}
           </span>
         </div>
@@ -143,8 +144,30 @@ export default function Ponds() {
     <Page
       title="รายบ่อ"
       nav="ponds"
-      over={open ? <PondSheet p={open} target={target} onCancel={() => setOpen(null)} onOpen={() => navigate(P.pond(open.id))} /> : null}
+      over={
+        open ? (
+          <PondSheet
+            p={open}
+            zoneName={zones.find((z) => z.zone === open.zone)?.name ?? null}
+            target={target}
+            onCancel={() => setOpen(null)}
+            onOpen={() => navigate(P.pond(open.id))}
+          />
+        ) : null
+      }
     >
+      {session.role === 'owner' ? (
+        <button type="button" className="pa-edit" onClick={() => navigate(P.pondsEdit)}>
+          <span className="ic">
+            <Icon n="edit" />
+          </span>
+          <span className="tx">
+            <b>แก้ไขโซนและบ่อ</b>
+            <span>ตั้งชื่อ · เพิ่มบ่อ · เพิ่มโซน</span>
+          </span>
+          <Icon n="chev" />
+        </button>
+      ) : null}
       <div className="pa-sum">
         <div className="pa-top">
           <div className="pa-n">

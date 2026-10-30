@@ -165,6 +165,19 @@ describe('POST /start', () => {
     expect(repos.state.lineUsers).toEqual([{ id: NEW, platformAccess: 'scan_only', signupSource: 'liff', onboarded: false, erased: false }])
   })
 
+  it('keeps the zone names given for zones the ponds make, and drops the rest', async () => {
+    const repos = createMemoryRepos()
+    const res = await as(NEW, repos).post('/start', {
+      name: 'ฟาร์ม',
+      ponds: ['A01', 'A02', 'B01'],
+      zoneNames: { a: '  หน้า  บ้าน ', B: ' ', C: 'ไม่มีบ่อ', D: 7 },
+    })
+    expect(res.status).toBe(200)
+    expect((await repos.settings.read(repos.state.farms[0]!.id)).zones).toEqual({ A: 'หน้า บ้าน' })
+    expect((await as(NEW, repos).post('/start', { name: 'ฟาร์ม', ponds: ['A01'], zoneNames: ['x'] })).status).toBe(200)
+    expect((await as(NEW, createMemoryRepos()).post('/start', { name: 'ฟาร์ม', ponds: ['A01'], zoneNames: ['x'] })).status).toBe(400)
+  })
+
   it('a pond code with no letter is zone 1', async () => {
     const res = await as(NEW, createMemoryRepos()).post('/start', { name: 'ฟาร์ม', ponds: ['1', '2', 'b1'] })
     expect(res.body.farm.zoneCount).toBe(2)
