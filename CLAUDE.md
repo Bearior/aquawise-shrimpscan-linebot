@@ -133,7 +133,8 @@ out of builds. A new host must be added to `deployedAs()` first.
   plugin; `dev-mock/store.ts` is an in-memory ฟาร์มสายน้ำ (60 ponds, the
   canvas's numbers) typed against `types.ts`, so a contract change breaks it at
   `tsc` time. `?as=owner|manager|worker|new|fresh` picks the persona;
-  `POST /api/mock/reset` starts over. Upload `dev-mock/fixtures/yor.jpg` to get
+  `POST /api/mock/reset` starts over; `/mock` links every screen for every
+  persona. Upload `dev-mock/fixtures/yor.jpg` to get
   the canvas's rim guess and dots (F10 reads 13.9 g on the guess, 17.2 g on the
   floor edge). Into a pond whose ยอ is square, upload
   `dev-mock/fixtures/yor-square.jpg` (an illustration) for แบบ 2's corners

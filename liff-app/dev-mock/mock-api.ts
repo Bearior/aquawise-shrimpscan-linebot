@@ -11,6 +11,7 @@
  *   in this run; `/mock-avatars/:id` draws a LINE picture for some people.
  *
  * State lives until the dev server restarts. `POST /api/mock/reset` starts over.
+ * `/mock` is a page of links: every screen, for every persona.
  */
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -128,6 +129,44 @@ function routes(store: Store): [string, RegExp, Handler][] {
   ]
 }
 
+/** [screen, path under /liff/app] by persona, for the `/mock` page. */
+const HUB: [Persona, string, [string, string][]][] = [
+  ['owner', 'เจ้าของ · พี่วิชัย', [
+    ['ภาพรวม', '/overview'], ['รายบ่อ', '/ponds'], ['แก้ไขโซนและบ่อ', '/ponds/edit'], ['หน้าบ่อ A04', '/ponds/p-a04'],
+    ['หน้าบ่อ F10 (ยังไม่สแกน)', '/ponds/p-f10'], ['ข้อมูลลงกุ้ง A04', '/ponds/p-a04/stocking'], ['ประวัติ F10', '/ponds/p-f10/history'],
+    ['แก้ขอบยอ F10', '/scans/s-f10-1015/fix'], ['สแกนวันนี้', '/team'], ['บ่อที่ช่างเอกดูแล', '/people/m-ek/ponds?from=team'],
+    ['สแกน', '/scan'], ['คนในฟาร์ม', '/people'], ['ชวนคนเข้าฟาร์ม', '/people/invite'], ['สิทธิ์ของลุงพล', '/people/m-phon/permissions'],
+    ['สิทธิ์ของน้าศักดิ์', '/people/m-sak/permissions'], ['ตั้งค่า', '/settings'], ['ยอของฟาร์ม', '/nets'], ['พิมพ์', '/print'],
+    ['ใบสรุปฟาร์ม', '/print/farm'], ['ใบบ่อ A04', '/print/pond/p-a04'],
+  ]],
+  ['manager', 'ผู้จัดการ · น้าศักดิ์ (โซน C และ D)', [
+    ['ภาพรวม', '/overview'], ['รายบ่อ', '/ponds'], ['หน้าบ่อ C01', '/ponds/p-c01'], ['สแกนวันนี้', '/team'],
+    ['บ่อของฉันวันนี้', '/today'], ['คนในฟาร์ม', '/people'], ['สแกน', '/scan'],
+  ]],
+  ['worker', 'ลูกน้อง · ช่างเอก (โซน F)', [['บ่อที่ต้องสแกนวันนี้', '/today'], ['สแกน F10', '/scan?pond=p-f10'], ['สแกน', '/scan']]],
+  ['new', 'คนใหม่ที่มีฟาร์มในน้องน้ำ', [['เริ่มใช้', '/start'], ['รับคำเชิญ 7K2P9QX', '/join?invite=7K2P9QX']]],
+  ['fresh', 'คนใหม่ ยังไม่มีฟาร์ม', [['รหัสเข้าร่วม แล้วสร้างฟาร์ม', '/start']]],
+]
+
+/** Every screen for every persona, as links; each opens in its own tab, which keeps its persona. */
+function serveHub(res: ServerResponse): void {
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  const href = (as: Persona, path: string) => `/liff/app${path}${path.includes('?') ? '&' : '?'}as=${as}`
+  const groups = HUB.map(
+    ([as, who, pages]) =>
+      `<section><h2>${esc(who)}</h2><ul>${pages.map(([label, path]) => `<li><a href="${href(as, path)}" target="_blank" rel="noopener">${esc(label)}</a></li>`).join('')}</ul></section>`,
+  ).join('')
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  res.end(`<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shrimp Scan mock</title>
+<style>body{font:16px/1.5 system-ui,'Noto Sans Thai',sans-serif;margin:0 auto;max-width:960px;padding:16px;color:#0d0c18;background:#f6f6fb}
+h1{font-size:22px;margin:4px 0}p{color:#4f4e62;margin:0 0 12px}section{background:#fff;border:1px solid #e0e0ea;border-radius:14px;padding:12px 16px;margin:12px 0}
+h2{font-size:17px;margin:0 0 6px}ul{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 16px;margin:0;padding:0;list-style:none}
+a{color:#004aad;text-decoration:none;display:block;padding:6px 0}a:hover{text-decoration:underline}button{font:inherit;padding:8px 14px;border-radius:10px;border:1px solid #004aad;background:#fff;color:#004aad;cursor:pointer}</style></head>
+<body><h1>Shrimp Scan · mock ทุกบทบาท ทุกหน้า</h1><p>ทุกลิงก์เปิดแท็บใหม่ และจำบทบาทไว้ในแท็บนั้น ข้อมูลใช้ร่วมกันทุกแท็บ เปิดดูบนจอแคบ (390 px) จะเหมือนในมือถือที่สุด</p>
+<button id="reset">เริ่มข้อมูลใหม่</button> <span id="done"></span>${groups}
+<script>document.getElementById('reset').onclick=async()=>{await fetch('/api/mock/reset',{method:'POST'});document.getElementById('done').textContent='เริ่มใหม่แล้ว'}</script></body></html>`)
+}
+
 /** A LINE picture stand-in: head and shoulders on a colour of the person's own. */
 function serveAvatar(res: ServerResponse, id: string): void {
   const hues = [205, 150, 25, 280, 340]
@@ -171,6 +210,7 @@ export function mockApiPlugin(): Plugin {
 
         if (p.startsWith('/mock-photos/')) return servePhoto(res, decodeURIComponent(p.slice('/mock-photos/'.length)))
         if (p.startsWith('/mock-avatars/')) return serveAvatar(res, decodeURIComponent(p.slice('/mock-avatars/'.length)))
+        if (p === '/mock' || p === '/mock/') return serveHub(res)
         if (!p.startsWith('/api/')) return next()
 
         if (p === '/api/liff-config') return send(res, 200, { env: 'mock' })
