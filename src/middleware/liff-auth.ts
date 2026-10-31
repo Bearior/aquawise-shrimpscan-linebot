@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express'
 import crypto from 'node:crypto'
 import { deployedAs } from '../lib/deployed.js'
+import { linePicture } from '../lib/line/profile.js'
 import { logger } from '../lib/logger.js'
 
 /**
@@ -26,17 +27,6 @@ export interface LiffIdentity {
 /** A display name worth keeping: trimmed, never blank. */
 function nameOf(raw: unknown): string | undefined {
   return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined
-}
-
-/** LINE's profile picture: an https URL on LINE's own hosts, or nothing. */
-function pictureOf(raw: unknown): string | undefined {
-  if (typeof raw !== 'string' || raw.length > 500) return undefined
-  try {
-    const u = new URL(raw)
-    return u.protocol === 'https:' && /(^|\.)line-scdn\.net$|(^|\.)line\.me$/.test(u.hostname) ? u.href : undefined
-  } catch {
-    return undefined
-  }
 }
 
 // 5-minute cache keyed by SHA-256 of the token (never stores the raw token).
@@ -100,7 +90,7 @@ async function verifyIdToken(token: string, liffChannelId: string): Promise<Liff
   // `name` and `picture` are in the payload when the LIFF has the profile scope.
   const payload = (await res.json()) as { sub?: string; name?: string; picture?: string; error?: string }
   if (payload.error || !payload.sub) throw new Error(payload.error || 'Missing sub in id-token payload')
-  return { userId: payload.sub, name: nameOf(payload.name), pictureUrl: pictureOf(payload.picture) }
+  return { userId: payload.sub, name: nameOf(payload.name), pictureUrl: linePicture(payload.picture) }
 }
 
 /**
@@ -126,7 +116,7 @@ async function verifyAccessToken(token: string, allowList: string[]): Promise<Li
   if (!profileRes.ok) throw new Error(`LINE profile fetch failed: ${profileRes.status}`)
   const profile = (await profileRes.json()) as { userId?: string; displayName?: string; pictureUrl?: string }
   if (!profile.userId) throw new Error('Missing userId in profile response')
-  return { userId: profile.userId, name: nameOf(profile.displayName), pictureUrl: pictureOf(profile.pictureUrl) }
+  return { userId: profile.userId, name: nameOf(profile.displayName), pictureUrl: linePicture(profile.pictureUrl) }
 }
 
 async function verifyWithLine(token: string): Promise<LiffIdentity> {

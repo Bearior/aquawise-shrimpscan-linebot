@@ -84,7 +84,8 @@
 }
 .band-art {
   position: absolute;
-  right: 40px;
+  /* The drawing ends in a straight cut through the tail fan: past the band's right edge, the tail reads as running off the screen (Bear, 2026-10-31). */
+  right: -6px;
   top: 4px;
   height: 128px;
   width: auto;
