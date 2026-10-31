@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Scan } from '../contract/types.js'
 import { UNMEASURED, type MemberRow, type ScanRow } from '../data/types.js'
+import { DEFAULTS } from './permissions.js'
 import { ringToPoints } from './rim-geometry.js'
 import { foundOf, lengthAtWeight, photoSizeOf, scanFor, shrimpLenPx, shrimpSizes, shrimpWeightG, toScanResult } from './scan-view.js'
 
@@ -77,7 +78,7 @@ describe('toScanResult: the stored row, so a later read says what the measure sa
   })
 })
 
-describe('foundOf and scanFor: a worker sees the dots and no number', () => {
+describe('foundOf and scanFor: a worker with seePonds off sees the dots and no number', () => {
   it('the dots without sizes, also before 210', () => {
     const noLengths: ScanRow = { ...measured, lenPx: null }
     const dots = foundOf(noLengths, 1000, 1000)!
@@ -87,12 +88,14 @@ describe('foundOf and scanFor: a worker sees the dots and no number', () => {
     expect(foundOf({ ...measured, shrimpXy: null }, 1000, 1000)).toBeNull()
   })
 
-  it('a worker gets result null, everyone else the result', () => {
+  it('a worker gets the result while they see their ponds and result null with the switch off; an owner and a manager always get it', () => {
     const scan = { id: 's1', result: toScanResult(measured, { id: 'net-40', cm: 40 }, 1000, 1000, null), found: [{ x: 0.5, y: 0.5 }] } as Scan
     const member = (role: MemberRow['role']): MemberRow => ({ id: 'm', farmId: 'f', lineUserId: 'U', role, name: '', pondIds: [], status: 'active' })
-    expect(scanFor(member('worker'), scan)).toMatchObject({ result: null, found: [{ x: 0.5, y: 0.5 }] })
+    const off = (role: MemberRow['role']): MemberRow => ({ ...member(role), perms: { ...DEFAULTS[role], seePonds: false } })
+    expect(scanFor(member('worker'), scan).result).not.toBeNull()
+    expect(scanFor(off('worker'), scan)).toMatchObject({ result: null, found: [{ x: 0.5, y: 0.5 }] })
     expect(scanFor(member('owner'), scan).result).not.toBeNull()
-    expect(scanFor(member('manager'), scan).result).not.toBeNull()
+    expect(scanFor(off('manager'), scan).result).not.toBeNull()
   })
 
   it('the photo size rides in the flags', () => {

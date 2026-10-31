@@ -5,6 +5,7 @@ import type { PondTile, ZoneSummary } from '@/api/types'
 import { Page, Sheet } from '@/components/Page'
 import { Icon } from '@/components/Icon'
 import { Ava } from '@/components/avatar'
+import { Band } from '@/components/band'
 import { ErrorState, Skeleton } from '@/components/ui'
 import { zoneLabel } from '@/lib/farm-layout'
 import { fmt1 } from '@/lib/format'
@@ -125,10 +126,22 @@ export default function Ponds() {
   const r = useApi(() => api.ponds())
   const [open, setOpen] = useState<PondTile | null>(null)
   const target = session.farm!.targetPerKg
+  // A worker reads the ponds they look after here (seePonds), with no ตั้งค่า behind their picture.
+  const worker = session.role === 'worker'
+  const band = (
+    <Band
+      art="pond"
+      title={worker ? 'บ่อที่ดูแล' : 'รายบ่อ'}
+      sub={worker ? `${session.user.name} · ${session.pondIds.length} บ่อ` : `${session.farm!.name} · ${session.farm!.pondCount} บ่อ`}
+      userName={session.user.name}
+      onProfile={worker ? undefined : () => navigate(P.settings)}
+    />
+  )
 
   if (!r.data) {
     return (
-      <Page title="รายบ่อ" nav="ponds">
+      <Page top={null} nav="ponds">
+        {band}
         {r.error ? <ErrorState error={r.error} onRetry={r.reload} /> : <Skeleton rows={[170, 260, 260]} />}
       </Page>
     )
@@ -142,7 +155,7 @@ export default function Ponds() {
 
   return (
     <Page
-      title="รายบ่อ"
+      top={null}
       nav="ponds"
       over={
         open ? (
@@ -156,6 +169,7 @@ export default function Ponds() {
         ) : null
       }
     >
+      {band}
       {session.role === 'owner' ? (
         <button type="button" className="pa-edit" onClick={() => navigate(P.pondsEdit)}>
           <span className="ic">

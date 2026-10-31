@@ -15,10 +15,11 @@ import { P } from '@/routes'
 import { useSession, useToast } from '@/session'
 
 /** The stripe at the top of the answer card: why the pond is red or yellow today. */
-function Stripe({ d }: { d: PondDetail }) {
+function Stripe({ d, worker }: { d: PondDetail; worker: boolean }) {
   const p = d.pond
   if (p.status === 'missing') {
-    const who = p.caretaker ? `${p.caretaker}ยังไม่ได้สแกนบ่อนี้วันนี้` : 'บ่อนี้ยังไม่มีคนดูแล วันนี้ยังไม่มีใครสแกน'
+    // The worker is the caretaker: their own name would read oddly, so the stripe says what to do.
+    const who = worker ? 'กดสแกนบ่อนี้ด้านบนได้เลยค่ะ' : p.caretaker ? `${p.caretaker}ยังไม่ได้สแกนบ่อนี้วันนี้` : 'บ่อนี้ยังไม่มีคนดูแล วันนี้ยังไม่มีใครสแกน'
     return (
       <div className="pg-stripe bd">
         <Icon n="cam" />
@@ -154,7 +155,9 @@ function Sizes({ grams, target }: { grams: number[]; target: number }) {
  * the pond picker in the header (‹ บ่อ A05 ⌄ ›), what to do first, then one
  * card that answers "when": a half ring of grams against the size, the days
  * left and the chance of making it. Then the three numbers, the sizes in the
- * ยอ, growth with its ± SD band, tonnes, and the last scan.
+ * ยอ, growth with its ± SD band, tonnes, and the last scan. A worker reads it
+ * for their own ponds (seePonds, Bear 2026-10-31) without the tonnes, the
+ * stocking or ขอรูปใหม่: the server sends them no stocking count.
  */
 export default function Pond() {
   const { id = '' } = useParams()
@@ -166,6 +169,7 @@ export default function Pond() {
   const [ask, setAsk] = useState(false)
   const [picking, setPicking] = useState(false)
   const farm = session.farm!
+  const worker = session.role === 'worker'
 
   if (!r.data) {
     return (
@@ -252,14 +256,14 @@ export default function Pond() {
           </button>
         ) : null}
       </div>
-      {d.latest && p.caretaker ? (
+      {d.latest && p.caretaker && !worker ? (
         <button type="button" className="pg-tl" onClick={() => setAsk(true)}>
           ขอรูปใหม่จาก{p.caretaker}
         </button>
       ) : null}
 
       <div className="pg-card">
-        <Stripe d={d} />
+        <Stripe d={d} worker={worker} />
         <div className="pg-hero">
           <Gauge abw={p.abw} targetG={targetG} ready={reached || p.status === 'ready'} />
           <Answer d={d} target={target} />
@@ -329,31 +333,33 @@ export default function Pond() {
         </div>
       </div>
 
-      <div className="pg-card">
-        {d.tonnesNow !== null && st.count && st.stockedOn ? (
-          <>
-            <b className="h">
-              กุ้งในบ่อราว <span className="mono">{fmtTonnes(d.tonnesNow)}</span> ตัน
-            </b>
-            <span className="sub">
-              ลง {fmtInt(st.count)} ตัว {fmtDay(st.stockedOn)}
-              {st.survival !== null ? ` · คิดว่ารอด ${Math.round(st.survival * 100)}%` : ''}
-            </span>
-            <button type="button" className="pg-lnk" onClick={() => navigate(P.stocking(p.id))}>
-              แก้ข้อมูลลงกุ้ง
-              <Icon n="chev" />
-            </button>
-          </>
-        ) : (
-          <>
-            <b className="h">ยังไม่รู้ว่ากุ้งในบ่อกี่ตัน</b>
-            <span className="sub">ใส่วันลงกุ้งกับจำนวนครั้งเดียว น้ำคิดให้ค่ะ</span>
-            <Btn kind="l" onClick={() => navigate(P.stocking(p.id))}>
-              ใส่ข้อมูลลงกุ้ง
-            </Btn>
-          </>
-        )}
-      </div>
+      {worker ? null : (
+        <div className="pg-card">
+          {d.tonnesNow !== null && st.count && st.stockedOn ? (
+            <>
+              <b className="h">
+                กุ้งในบ่อราว <span className="mono">{fmtTonnes(d.tonnesNow)}</span> ตัน
+              </b>
+              <span className="sub">
+                ลง {fmtInt(st.count)} ตัว {fmtDay(st.stockedOn)}
+                {st.survival !== null ? ` · คิดว่ารอด ${Math.round(st.survival * 100)}%` : ''}
+              </span>
+              <button type="button" className="pg-lnk" onClick={() => navigate(P.stocking(p.id))}>
+                แก้ข้อมูลลงกุ้ง
+                <Icon n="chev" />
+              </button>
+            </>
+          ) : (
+            <>
+              <b className="h">ยังไม่รู้ว่ากุ้งในบ่อกี่ตัน</b>
+              <span className="sub">ใส่วันลงกุ้งกับจำนวนครั้งเดียว น้ำคิดให้ค่ะ</span>
+              <Btn kind="l" onClick={() => navigate(P.stocking(p.id))}>
+                ใส่ข้อมูลลงกุ้ง
+              </Btn>
+            </>
+          )}
+        </div>
+      )}
 
       {d.latest ? (
         <div className="pg-card">

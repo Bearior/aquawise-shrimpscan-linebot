@@ -229,12 +229,12 @@ interface MFarm {
 }
 
 const DEFAULTS: Record<Role, Permissions> = {
-  owner: { editOthers: true, measureInbox: true, farmOverview: true, printSheet: true, remindMissing: true },
-  manager: { editOthers: true, measureInbox: true, farmOverview: true, printSheet: true, remindMissing: false },
-  worker: { editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, remindMissing: true },
+  owner: { editOthers: true, measureInbox: true, farmOverview: true, printSheet: true, seePonds: true, remindMissing: true },
+  manager: { editOthers: true, measureInbox: true, farmOverview: true, printSheet: true, seePonds: true, remindMissing: false },
+  worker: { editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, seePonds: true, remindMissing: true },
 }
 
-/** The keys that would show a size or a result. A worker never has them, whatever is stored. */
+/** The farm-wide keys: other people's photos and results, the whole farm, the sheets. A worker never has them, whatever is stored. */
 const SIZE_KEYS: PermissionKey[] = ['editOthers', 'measureInbox', 'farmOverview', 'printSheet']
 
 function effective(m: MMember): Permissions {
@@ -242,6 +242,11 @@ function effective(m: MMember): Permissions {
   const p = { ...m.perms }
   for (const k of SIZE_KEYS) p[k] = false
   return p
+}
+
+/** Pond numbers: an owner and a manager always, a worker (their own ponds only) while seePonds is on. */
+function sees(m: MMember): boolean {
+  return m.role !== 'worker' || effective(m).seePonds
 }
 
 /** Photos served at /mock-photos/:id: fixture names, or bytes uploaded in this run. */
@@ -517,9 +522,23 @@ export class Store {
     if (!effective(me)[key]) throw new MockError(403, 'not_allowed')
   }
 
-  /** Sizes, growth and pond pages are not a worker's: they scan and send. */
+  /** Writes to a pond (stocking, its ยอ) are not a worker's. */
   private noWorker(me: MMember): void {
     if (me.role === 'worker') throw new MockError(403, 'not_allowed')
+  }
+
+  /** The ponds `me` reads on the pond pages: every pond, a worker's own while seePonds is on (Bear, 2026-10-31). */
+  private readable(farm: MFarm, me: MMember): MPond[] {
+    if (!sees(me)) throw new MockError(403, 'not_allowed')
+    return me.role === 'worker' ? farm.ponds.filter((p) => me.pondIds.includes(p.id)) : farm.ponds
+  }
+
+  /** One readable pond; the farm's pond someone else looks after is not_allowed. */
+  private readPond(farm: MFarm, me: MMember, id: string): { p: MPond; list: MPond[] } {
+    const list = this.readable(farm, me)
+    const p = this.pond(farm, id)
+    if (!list.includes(p)) throw new MockError(403, 'not_allowed')
+    return { p, list }
   }
 
   private ownerOnly(me: MMember): void {
@@ -675,9 +694,9 @@ export class Store {
 
   ponds(persona: Persona): PondsResponse {
     const { farm, me } = this.ctx(persona)
-    this.noWorker(me)
-    const tiles = farm.ponds.map((p) => this.tile(farm, p, me))
-    const zones = [...new Set(farm.ponds.map((p) => p.zone))].map((zone) => {
+    const list = this.readable(farm, me)
+    const tiles = list.map((p) => this.tile(farm, p, me))
+    const zones = [...new Set(list.map((p) => p.zone))].map((zone) => {
       const zt = tiles.filter((t) => t.zone === zone)
       return { zone, name: farm.zoneNames[zone] ?? null, caretaker: zt[0]?.caretaker ?? null, total: zt.length, photoToday: zt.filter((t) => t.photoToday).length }
     })
@@ -745,7 +764,7 @@ export class Store {
   }
 
   private canFix(s: MScan, me: MMember): boolean {
-    return me.role !== 'worker' && Boolean(s.result) && (s.measuredById === me.id || effective(me).editOthers)
+    return sees(me) && Boolean(s.result) && (s.measuredById === me.id || effective(me).editOthers)
   }
 
   private previousOf(farm: MFarm, s: MScan): { abw: number; date: string } | null {
@@ -769,13 +788,14 @@ export class Store {
 
   pondDetail(persona: Persona, id: string): PondDetail {
     const { farm, me } = this.ctx(persona)
-    this.noWorker(me)
-    const p = this.pond(farm, id)
+    const { p, list } = this.readPond(farm, me, id)
     const tile = this.tile(farm, p, me)
     const last = this.saved(farm, p.id)[0]
-    const idx = farm.ponds.indexOf(p)
-    const prev = farm.ponds[idx - 1] ?? null
-    const next = farm.ponds[idx + 1] ?? null
+    const idx = list.indexOf(p)
+    const prev = list[idx - 1] ?? null
+    const next = list[idx + 1] ?? null
+    // A worker sees the pond's age (from the stocking day), not how many went in or the tonnes.
+    const worker = me.role === 'worker'
     const growth = this.growth(farm, p)
     const chance: Record<PondStatus, number> = { ready: 0.92, good: 0.8, watch: 0.6, urgent: 0.35, missing: 0.7 }
     return {
@@ -783,8 +803,8 @@ export class Store {
       growth,
       latest: last ? this.summary(farm, last, me) : null,
       latestShrimpGrams: last?.result?.shrimp.map((s) => s.g) ?? [],
-      stocking: { stockedOn: p.stockedOn, count: p.count, survival: p.survival },
-      tonnesNow: tile.abw !== null && p.count ? round1((p.count * (p.survival ?? 0.8) * tile.abw) / 1e6) : null,
+      stocking: { stockedOn: p.stockedOn, count: worker ? null : p.count, survival: worker ? null : p.survival },
+      tonnesNow: !worker && tile.abw !== null && p.count ? round1((p.count * (p.survival ?? 0.8) * tile.abw) / 1e6) : null,
       note: p.note,
       prevId: prev?.id ?? null,
       prevCode: prev?.code ?? null,
@@ -796,8 +816,7 @@ export class Store {
 
   pondScans(persona: Persona, id: string): PondScansResponse {
     const { farm, me } = this.ctx(persona)
-    this.noWorker(me)
-    const p = this.pond(farm, id)
+    const { p } = this.readPond(farm, me, id)
     return { pond: this.tile(farm, p, me), scans: this.saved(farm, p.id).map((s) => this.summary(farm, s, me)) }
   }
 
@@ -1048,7 +1067,7 @@ export class Store {
       photoBy: s.by,
       photoAt: s.at,
       status: s.status,
-      result: me.role === 'worker' ? null : s.result,
+      result: sees(me) ? s.result : null,
       found: s.result ? s.result.shrimp.map((q) => ({ x: q.x, y: q.y })) : null,
       measuredBy: s.measuredBy,
       canFix: this.canFix(s, me),
@@ -1175,7 +1194,7 @@ export class Store {
       pondCode: p.code,
       doneToday,
       mineTotal: mine.length,
-      reachOn: me.role === 'worker' ? null : tile.reachOn,
+      reachOn: sees(me) ? tile.reachOn : null,
     }
   }
 

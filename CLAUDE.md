@@ -102,12 +102,19 @@ out of builds. A new host must be added to `deployedAs()` first.
   step (4 steps, the ยอ as a chip on the photo step) and no result: its last
   step shows where น้ำ found the shrimp, a note, and ส่งให้เจ้าของ.
   `src/lib/rim.ts` holds the geometry for both shapes (`fitRim`).
-- **A worker sees no number** (Bear, 2026-10-27). Their screens are บ่อที่ต้อง
-  สแกนวันนี้ (W23) and the scan. The contract holds it, not only the
-  screens: `/today` rows carry no sizes, a worker's `Scan.result` is null
-  (they get `found`, the dots without grams), `/ponds`, `/ponds/:id` and the
-  overview refuse a worker, and the four size-showing permissions are held
-  off for a worker whatever is stored. A pond has one caretaker; the owner
+- **A worker sees their own ponds, read only** (Bear, 2026-10-31; until
+  then a worker saw no number at all). The switch is `seePonds`: on by
+  default, the owner turns it off per person on สิทธิ์รายคน. While it is on, a
+  worker has two tabs (สแกนวันนี้ and บ่อที่ดูแล); `/ponds`, `/ponds/:id`
+  and `/ponds/:id/scans` answer with their ponds only (another pond is 403),
+  without the stocking count, survival or tonnes; their `Scan.result` comes
+  back after a scan and they may fix the rim of their own scans. With it
+  off, the old rule holds: `result` is null (they get `found`, the dots
+  without grams) and the pond pages are 403. Either way `/today` rows carry
+  no sizes, the overview, stocking, the ยอ and every write are refused, and
+  the four farm-wide permissions (`SIZE_KEYS`) are held off for a worker
+  whatever is stored. `seesPonds()` in `src/domain/permissions.ts` is the
+  one check. A pond has one caretaker; the owner
   sets each person's ponds on บ่อที่ดูแล (O40) and watches สแกนวันนี้ (O39).
   The inbox and its measure flow (O13 to O18) are still in the code but no
   longer in the nav: they were for photos sent in the chat.

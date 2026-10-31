@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/api/client'
+import { Band } from '@/components/band'
 import { Page } from '@/components/Page'
 import { Btn, ErrorState, Head3, Saved, Skeleton, Tip } from '@/components/ui'
 import { fmtTime, fmtWeekday } from '@/lib/format'
@@ -9,19 +10,24 @@ import { useSession } from '@/session'
 
 /**
  * บ่อที่ต้องสแกนวันนี้ (W23): the ponds this person looks after, scanned today
- * or not. No sizes and no results: a worker scans each pond into the pond,
- * and the owner sees what it said.
+ * or not. No sizes here: a worker scans each pond into the pond, and the
+ * owner sees what it said. While the worker sees their ponds (seePonds,
+ * Bear 2026-10-31) a scanned pond opens its หน้าบ่อ, and บ่อที่ดูแล is the
+ * second tab.
  */
 export default function Today() {
   const navigate = useNavigate()
   const { session } = useSession()
   const r = useApi(() => api.today())
   const owner = session.farm!.ownerName
-  const sub = `${session.user.name} · ${fmtWeekday(session.today)}`
+  const sees = session.permissions.seePonds
+  const nav = sees ? ('today' as const) : undefined
+  const band = <Band art="camera" title="บ่อที่ต้องสแกนวันนี้" sub={`${session.user.name} · ${fmtWeekday(session.today)}`} userName={session.user.name} />
 
   if (!r.data) {
     return (
-      <Page title="บ่อที่ต้องสแกนวันนี้" sub={sub} close>
+      <Page top={null} nav={nav}>
+        {band}
         {r.error ? <ErrorState error={r.error} onRetry={r.reload} /> : <Skeleton rows={[60, 220, 120]} />}
       </Page>
     )
@@ -33,9 +39,8 @@ export default function Today() {
 
   return (
     <Page
-      title="บ่อที่ต้องสแกนวันนี้"
-      sub={sub}
-      close
+      top={null}
+      nav={nav}
       foot={
         left.length ? (
           <Btn icon="scan" onClick={() => navigate(P.scan(left[0]!.pondId))}>
@@ -44,6 +49,7 @@ export default function Today() {
         ) : undefined
       }
     >
+      {band}
       <div className="vc xprog">
         <div className="pl">
           <span>สแกนแล้ว</span>
@@ -78,12 +84,20 @@ export default function Today() {
         <div className="grp">
           <Head3 t={`สแกนแล้ว ${done.length} บ่อ`} />
           <div className="pg" role="list" aria-label="บ่อที่สแกนแล้ว">
-            {done.map((x) => (
-              <div key={x.pondId} role="listitem" className="pd g">
-                <b>{x.pondCode}</b>
-                {x.by && x.by !== session.user.name ? `${x.by}สแกน` : x.at ? fmtTime(x.at) : 'สแกนแล้ว'}
-              </div>
-            ))}
+            {done.map((x) => {
+              const said = x.by && x.by !== session.user.name ? `${x.by}สแกน` : x.at ? fmtTime(x.at) : 'สแกนแล้ว'
+              return sees ? (
+                <button key={x.pondId} type="button" role="listitem" className="pd g" onClick={() => navigate(P.pond(x.pondId))} aria-label={`บ่อ ${x.pondCode} ${said} · ดูหน้าบ่อ`}>
+                  <b>{x.pondCode}</b>
+                  {said}
+                </button>
+              ) : (
+                <div key={x.pondId} role="listitem" className="pd g">
+                  <b>{x.pondCode}</b>
+                  {said}
+                </div>
+              )
+            })}
           </div>
         </div>
       ) : null}

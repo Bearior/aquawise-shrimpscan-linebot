@@ -16,7 +16,7 @@ import { useSession, useToast } from '@/session'
 type InviteRole = Exclude<Role, 'owner'>
 
 const ROLE_CARDS: [InviteRole, string][] = [
-  ['worker', 'สแกนกุ้งบ่อที่ดูแลทุกวัน · ไม่เห็นไซส์ ผลสแกนถึงเจ้าของ'],
+  ['worker', 'สแกนกุ้งบ่อที่ดูแลทุกวัน · ดูไซส์ได้เฉพาะบ่อที่ดูแล'],
   ['manager', `สแกนได้เหมือน${WORKER} · เห็นไซส์และภาพรวมทั้งฟาร์ม · แก้ผลสแกนของทุกคน`],
 ]
 

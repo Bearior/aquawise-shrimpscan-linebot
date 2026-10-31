@@ -29,8 +29,9 @@ export interface Pt {
 /**
  * What a person may do beyond the daily job. Everyone in a farm scans the
  * ponds they look after, into the pond, every day; that is not a switch.
- * A worker never sees sizes or results, so the server holds the four
- * number-showing keys off for a worker whatever is stored.
+ * A worker sees the numbers of the ponds they look after, read only, while
+ * seePonds is on (Bear, 2026-10-31); the four farm-wide keys stay off for a
+ * worker whatever is stored.
  */
 export interface Permissions {
   /** แก้ขอบยอผลของคนอื่น. Your own scans are always editable (not a worker's: they see no result). */
@@ -41,6 +42,8 @@ export interface Permissions {
   farmOverview: boolean
   /** พิมพ์ใบผลสแกน. */
   printSheet: boolean
+  /** ดูข้อมูลบ่อที่ดูแล: หน้าบ่อ, ประวัติสแกน and the scan's result. An owner and a manager see every pond whatever this says. */
+  seePonds: boolean
   /** เตือนเมื่อยังไม่สแกน. */
   remindMissing: boolean
 }

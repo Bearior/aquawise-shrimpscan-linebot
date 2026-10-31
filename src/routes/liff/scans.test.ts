@@ -7,6 +7,7 @@ import { createApp } from '../../app.js'
 import { createMemoryRepos, type MemoryRepos, type MemoryState } from '../../data/memory.js'
 import { UNMEASURED, type FarmRow, type MemberRow, type NetRow, type PondRow, type ScanRow } from '../../data/types.js'
 import { addDays, bangkokDay } from '../../domain/farm.js'
+import { DEFAULTS } from '../../domain/permissions.js'
 import { CENTRED_RING, ellipseToRing, pointsToEllipse, ringToPoints } from '../../domain/rim-geometry.js'
 import { shrimpLenPx } from '../../domain/scan-view.js'
 import type { SizingClient, SizingMeasureResponse, SizingRing, SizingRimResponse } from '../../lib/sizing.js'
@@ -71,6 +72,8 @@ const ponds: PondRow[] = [
 const nets: NetRow[] = [{ id: 'net-82', farmId: farm.id, cm: 82, createdBy: OWNER, createdAt: '2026-10-20T03:00:00Z', archivedAt: null }]
 
 const seeded = (extra: Partial<MemoryState> = {}) => createMemoryRepos({ farms: [farm, other], members, ponds, nets, ...extra })
+/** The owner's seePonds switch turned off for the worker. */
+const workerOff = { settings: { [farm.id]: { perms: { 'm-worker': { ...DEFAULTS.worker, seePonds: false } } } } }
 
 function nothingWritten(repos: MemoryRepos) {
   expect(repos.state.scans).toHaveLength(0)
@@ -272,8 +275,17 @@ describe('POST /scans/:id/measure', () => {
     expect(again.body.result).toEqual(scan.result)
   })
 
-  it('a worker measuring their own photo gets where the shrimp are and no number, by any door', async () => {
+  it('a worker measuring their own photo sees the result and may fix it, while they see their ponds', async () => {
     const repos = seeded()
+    const sizing = sizingAnswering(OK)
+    const id = await uploaded(repos, WORKER, sizing)
+    const res = await as(WORKER, repos, sizing).measure(id, { rim: RIM, netId: 'net-82' })
+    expect(res.status).toBe(200)
+    expect(res.body.scan).toMatchObject({ status: 'measured', result: { abw: 13.9 }, canFix: true })
+  })
+
+  it('with the switch off, a worker measuring their own photo gets where the shrimp are and no number, by any door', async () => {
+    const repos = seeded(workerOff)
     const sizing = sizingAnswering(OK)
     const id = await uploaded(repos, WORKER, sizing)
     const res = await as(WORKER, repos, sizing).measure(id, { rim: RIM, netId: 'net-82' })
@@ -567,8 +579,27 @@ describe('POST /scans/:id/fix and /fix/apply', () => {
     expect(repos.state.growth[0]).toMatchObject({ abw: 13.9 })
   })
 
-  it('a worker may not fix, their own photo or anyone else’s; a manager may fix the owner’s', async () => {
+  it('a worker fixes their own photo while they see their ponds, never anyone else’s; a manager may fix the owner’s', async () => {
     const repos = seeded({ members: [...members, manager] })
+    const sizing = sizingAnswering(OK, OK, NEW)
+    const own = await uploaded(repos, WORKER, sizing)
+    await as(WORKER, repos, sizing).measure(own, { rim: RIM, netId: 'net-82' })
+    const owners = await uploaded(repos, OWNER, sizing, Buffer.concat([YOR, Buffer.from([0])]))
+    await as(OWNER, repos, sizing).measure(owners, { rim: RIM, netId: 'net-82' })
+    const res = await as(WORKER, repos, sizing).fix(owners, RIM2)
+    expect(res.status).toBe(403)
+    expect(res.body).toEqual({ error: 'not_allowed' })
+    expect((await as(WORKER, repos, sizing).fixApply(owners, { use: 'new', rim: RIM2 })).status).toBe(403)
+    expect(sizing.measure).toHaveBeenCalledTimes(2)
+    const mine = await as(WORKER, repos, sizing).fix(own, RIM2)
+    expect(mine.status).toBe(200)
+    expect(mine.body.after).toMatchObject({ abw: 15 })
+    const mgr = await as('Umanager', repos, sizing).fix(owners, RIM2)
+    expect(mgr.status).toBe(200)
+  })
+
+  it('with the switch off, a worker may not fix, their own photo or anyone else’s', async () => {
+    const repos = seeded({ members: [...members, manager], ...workerOff })
     const sizing = sizingAnswering(OK, NEW)
     const own = await uploaded(repos, WORKER, sizing)
     await as(WORKER, repos, sizing).measure(own, { rim: RIM, netId: 'net-82' })
@@ -581,9 +612,6 @@ describe('POST /scans/:id/fix and /fix/apply', () => {
       expect((await as(WORKER, repos, sizing).fixApply(id, { use: 'new', rim: RIM2 })).status).toBe(403)
     }
     expect(sizing.measure).toHaveBeenCalledTimes(2)
-    const res = await as('Umanager', repos, sizing).fix(owners, RIM2)
-    expect(res.status).toBe(200)
-    expect(res.body.after).toMatchObject({ abw: 15 })
   })
 
   it('use new stores the new result, the history says who fixed it, when, and the old number; the pond-day growth row follows', async () => {

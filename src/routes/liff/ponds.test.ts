@@ -4,6 +4,7 @@ import { createApp } from '../../app.js'
 import { createMemoryRepos, type MemoryRepos, type MemoryState } from '../../data/memory.js'
 import { UNMEASURED, type FarmRow, type MemberRow, type NetRow, type PondRow, type ScanRow } from '../../data/types.js'
 import { addDays, bangkokDay } from '../../domain/farm.js'
+import { DEFAULTS } from '../../domain/permissions.js'
 import { shrimpWeightG } from '../../domain/scan-view.js'
 import { userTag } from '../liff-me.js'
 
@@ -101,14 +102,49 @@ describe('GET /ponds', () => {
   })
 })
 
-describe('a worker sees no sizes', () => {
-  it.each(['/ponds', '/ponds/p1', '/ponds/p1/scans', '/ponds/p1/stocking'])('GET %s is 403 not_allowed', async (path) => {
-    const res = await as(WORKER, seeded()).get(path)
+/** The farm with the owner's seePonds switch turned off for the worker. */
+function switchedOff(): MemoryRepos {
+  return seeded({ settings: { [farm.id]: { perms: { [worker.id]: { ...DEFAULTS.worker, seePonds: false } } } } })
+}
+
+describe('a worker reads the ponds they look after (seePonds, on unless the owner turns it off)', () => {
+  it('GET /ponds gives only their ponds and their zone', async () => {
+    const res = await as(WORKER, seeded()).get('/ponds')
+    expect(res.status).toBe(200)
+    expect(res.body.ponds.map((t: { code: string }) => t.code)).toEqual(['A01', 'A02'])
+    expect(res.body.zones).toEqual([{ zone: 'A', name: null, caretaker: 'น้องเอ', total: 2, photoToday: 1 }])
+  })
+
+  it('GET /ponds/:id gives their pond without the stocking count or the tonnes; the neighbours are their ponds', async () => {
+    const res = await as(WORKER, seeded()).get('/ponds/p1')
+    expect(res.status).toBe(200)
+    expect(res.body.pond).toMatchObject({ code: 'A01', perKg: 94, ageDays: 40 })
+    expect(res.body.stocking).toEqual({ stockedOn: addDays(TODAY, -40), count: null, survival: null })
+    expect(res.body.tonnesNow).toBeNull()
+    expect([res.body.prevId, res.body.nextId]).toEqual([null, 'p2'])
+    // Their own scan: they may fix its rim.
+    expect(res.body.latest).toMatchObject({ scanId: 's3', canFix: true })
+  })
+
+  it('GET /ponds/:id/scans gives their pond’s history', async () => {
+    const res = await as(WORKER, seeded()).get('/ponds/p1/scans')
+    expect(res.status).toBe(200)
+    expect(res.body.scans.map((s: { scanId: string }) => s.scanId)).toEqual(['s3', 's2', 's1'])
+  })
+
+  it('a pond someone else looks after is 403, another farm’s is 404', async () => {
+    for (const path of ['/ponds/p3', '/ponds/p3/scans']) expect((await as(WORKER, seeded()).get(path)).status).toBe(403)
+    expect((await as(WORKER, seeded()).get('/ponds/px')).status).toBe(404)
+  })
+
+  it.each(['/ponds', '/ponds/p1', '/ponds/p1/scans', '/ponds/p1/stocking'])('with the switch off, GET %s is 403 not_allowed', async (path) => {
+    const res = await as(WORKER, switchedOff()).get(path)
     expect(res.status).toBe(403)
     expect(res.body).toEqual({ error: 'not_allowed' })
   })
 
-  it('and cannot change stocking or the ยอ', async () => {
+  it('never reads the stocking page, and cannot change stocking or the ยอ', async () => {
+    expect((await as(WORKER, seeded()).get('/ponds/p1/stocking')).status).toBe(403)
     const repos = seeded()
     const c = as(WORKER, repos)
     expect((await c.put('/ponds/p1/stocking', { stockedOn: null, count: null, survival: null })).status).toBe(403)

@@ -5,6 +5,7 @@ import type { TeamPerson } from '@/api/types'
 import { Page } from '@/components/Page'
 import { Icon } from '@/components/Icon'
 import { Ava } from '@/components/avatar'
+import { Band } from '@/components/band'
 import { ScanGrid } from '@/components/scan-grid'
 import { ErrorState, MBtn, Skeleton, Tip } from '@/components/ui'
 import { ROLE_LABEL, WORKER } from '@/copy/th'
@@ -48,11 +49,14 @@ export default function TeamToday() {
   const r = useApi(() => api.teamToday())
   const [open, setOpen] = useState<Set<string>>(new Set())
   const owner = session.role === 'owner'
-  const sub = fmtWeekday(session.today)
+  const band = (
+    <Band art="camera" title="สแกนวันนี้" sub={fmtWeekday(session.today)} userName={session.user.name} onProfile={() => navigate(P.settings)} />
+  )
 
   if (!r.data) {
     return (
-      <Page title="สแกนวันนี้" sub={sub} nav="team">
+      <Page top={null} nav="team">
+        {band}
         {r.error ? <ErrorState error={r.error} onRetry={r.reload} /> : <Skeleton rows={[230, 150, 150, 64]} />}
       </Page>
     )
@@ -76,7 +80,8 @@ export default function TeamToday() {
     ) : null
 
   return (
-    <Page title="สแกนวันนี้" sub={sub} nav="team">
+    <Page top={null} nav="team">
+      {band}
       <section className="tm-head" aria-label="สแกนแล้วทั้งฟาร์ม">
         <div className="tm-top">
           <div className="tm-t">

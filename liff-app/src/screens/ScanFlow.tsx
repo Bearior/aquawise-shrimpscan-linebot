@@ -373,37 +373,56 @@ export default function ScanFlow() {
       break
     case 'result': {
       if (worker) {
-        // No sizes for a worker: where the shrimp were found, a note for the owner, and send.
+        // A worker sends the scan to the owner, with a note if they like. While they see their ponds
+        // (seePonds, Bear 2026-10-31) the server sends the result and they see its sizes like the owner;
+        // otherwise only where น้ำ found the shrimp. The ยอ is the owner's either way, so no ยอ change here.
         const found = scan ? dotsOf(scan) : null
+        const sized = scan?.result
+        const notesBlock = (
+          <div className="grp">
+            <Head3 t={`จดเพิ่มให้${farm.ownerName}`} />
+            <span className="l5 mut" style={{ marginTop: -4 }}>
+              ไม่ต้องก็ได้ค่ะ
+            </span>
+            <div className="chips">
+              {NOTE_CHIPS.map((t) => (
+                <Chip key={t} on={notes.includes(t)} onClick={() => setNotes((n) => (n.includes(t) ? n.filter((x) => x !== t) : [...n, t]))}>
+                  {t}
+                </Chip>
+              ))}
+              <Chip on={typing} onClick={() => setTyping((v) => !v)}>
+                พิมพ์เอง
+              </Chip>
+            </div>
+            {typing ? (
+              <label className="inp">
+                <input value={typed} maxLength={120} onChange={(e) => setTyped(e.target.value)} aria-label="จดเพิ่มให้เจ้าของ" autoFocus />
+              </label>
+            ) : null}
+          </div>
+        )
         body =
-          found && photo && pond ? (
+          sized && photo && pond ? (
+            <ResultBody
+              pondCode={pond.code}
+              photoUrl={photo.url}
+              aspect={photo.aspect}
+              r={sized}
+              target={farm.targetPerKg}
+              onFixRim={() => go('rim')}
+              note={`กดส่ง ผลจะบันทึกเข้าบ่อ ${pond.code} และถึง${farm.ownerName}ทันที`}
+            >
+              {notesBlock}
+              <InlineError error={error} />
+            </ResultBody>
+          ) : found && photo && pond ? (
             <div className="rbody w-fade">
               <Head2 t={`วัดบ่อ ${pond.code} เสร็จแล้วค่ะ`} d={`กดส่ง ผลจะบันทึกเข้าบ่อ ${pond.code} และถึง${farm.ownerName}ทันที`} />
               <div style={{ display: 'grid', justifyItems: 'center' }}>
                 <Crop photoUrl={photo.url} aspect={photo.aspect} shape={shape} rim={rim} shrimp={found} width={220} />
               </div>
               <span className="l5 mut">จุดสีน้ำเงิน คือกุ้งที่น้ำเจอในยอ ถ้าขอบไม่ตรงพื้นยอ กดแก้ขอบยอได้ค่ะ</span>
-              <div className="grp">
-                <Head3 t={`จดเพิ่มให้${farm.ownerName}`} />
-                <span className="l5 mut" style={{ marginTop: -4 }}>
-                  ไม่ต้องก็ได้ค่ะ
-                </span>
-                <div className="chips">
-                  {NOTE_CHIPS.map((t) => (
-                    <Chip key={t} on={notes.includes(t)} onClick={() => setNotes((n) => (n.includes(t) ? n.filter((x) => x !== t) : [...n, t]))}>
-                      {t}
-                    </Chip>
-                  ))}
-                  <Chip on={typing} onClick={() => setTyping((v) => !v)}>
-                    พิมพ์เอง
-                  </Chip>
-                </div>
-                {typing ? (
-                  <label className="inp">
-                    <input value={typed} maxLength={120} onChange={(e) => setTyped(e.target.value)} aria-label="จดเพิ่มให้เจ้าของ" autoFocus />
-                  </label>
-                ) : null}
-              </div>
+              {notesBlock}
               <InlineError error={error} />
             </div>
           ) : null

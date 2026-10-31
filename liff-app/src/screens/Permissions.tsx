@@ -11,9 +11,10 @@ import { useApi } from '@/lib/use-api'
 import { P } from '@/routes'
 
 /**
- * The things a person can be allowed to do beyond scanning their ponds; the
- * reminder is a notification, not an ability. All four show sizes or results,
- * so none is open to a worker: a worker only scans.
+ * The things a manager can be allowed to do beyond scanning their ponds; the
+ * reminder is a notification, not an ability. All four reach past the
+ * person's own ponds, so none is open to a worker. A worker's one switch is
+ * seePonds: the numbers of the ponds they look after (Bear, 2026-10-31).
  */
 const ABILITIES: PermissionKey[] = ['editOthers', 'measureInbox', 'farmOverview', 'printSheet']
 
@@ -114,7 +115,7 @@ export default function Permissions() {
         ) : null}
         <div className="psum">
           <div>
-            <b>{worker ? 'สแกนอย่างเดียว' : `ทำได้ ${can} จาก ${ABILITIES.length} อย่าง`}</b>
+            <b>{worker ? (d.perms.seePonds ? 'สแกน และดูบ่อที่ดูแล' : 'สแกนอย่างเดียว') : `ทำได้ ${can} จาก ${ABILITIES.length} อย่าง`}</b>
             <span>{customN ? `ปรับเอง ${customN} อย่าง` : 'ตามค่าเริ่มต้นของบทบาท'}</span>
           </div>
           {customN ? (
@@ -130,8 +131,9 @@ export default function Permissions() {
         <Row t="ดูว่าวันนี้ต้องสแกนบ่อไหน" s="บ่อที่ดูแล และบ่อที่ยังไม่สแกน" right={<Icon n="check" />} />
       </Group>
       {worker ? (
-        <Group t="ไซส์และผลสแกน" s={`${ROLE_LABEL.worker}ไม่เห็น`}>
-          <Row t="ดูไซส์ ผลสแกน และภาพรวมฟาร์ม" s="ถ้าอยากให้เห็น เปลี่ยนบทบาทเป็นผู้จัดการ" right={<Icon n="lock" />} muted />
+        <Group t="ดูข้อมูล">
+          <Row t="ดูข้อมูลบ่อที่ดูแล" s="ไซส์ กราฟการโต และประวัติสแกน ดูได้อย่างเดียว" right={sw('seePonds', 'ดูข้อมูลบ่อที่ดูแล')} custom={custom('seePonds')} />
+          <Row t="ดูบ่ออื่นและภาพรวมทั้งฟาร์ม" s={`${ROLE_LABEL.worker}ไม่เห็น ถ้าอยากให้เห็น เปลี่ยนบทบาทเป็นผู้จัดการ`} right={<Icon n="lock" />} muted />
         </Group>
       ) : (
         <>

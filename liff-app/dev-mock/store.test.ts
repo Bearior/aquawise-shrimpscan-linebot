@@ -76,7 +76,7 @@ describe('the mock farm', () => {
     s.measure('worker', scan.id, FIXED, 'net-82')
     const saved = s.save('worker', scan.id, ['กินดี'])
     expect(saved.doneToday).toBe(10) // F01 to F09 scanned this morning, F10 now
-    expect(saved.reachOn).toBeNull() // a worker gets no growth back
+    expect(saved.reachOn).toBe(s.pondDetail('owner', 'p-f10').pond.reachOn) // a worker who sees their ponds gets when it reaches size
     const tile = s.ponds('owner').ponds.find((p) => p.code === 'F10')!
     expect(tile.photoToday).toBe(true)
     expect(tile.abw).toBe(17.2)
@@ -84,7 +84,7 @@ describe('the mock farm', () => {
     expect(s.teamToday('owner').people.find((x) => x.name === 'ช่างเอก')).toMatchObject({ done: 10, total: 10 })
   })
 
-  it('gives a worker their ponds for today and no sizes', () => {
+  it('gives a worker their ponds for today, and their own ponds’ numbers while seePonds is on', () => {
     const s = new Store()
     const t = s.today('worker')
     expect(t).toMatchObject({ done: 9, total: 10 })
@@ -93,16 +93,33 @@ describe('the mock farm', () => {
 
     const { scan } = s.upload('worker', 'p-f10', yor, 'image/jpeg')
     const m = s.measure('worker', scan.id, FIXED, 'net-82')
-    expect(m.scan.result).toBeNull()
-    expect(m.scan.found).toHaveLength(64)
-    expect(m.scan.canFix).toBe(false)
-    expect(s.measure('owner', scan.id, FIXED, 'net-82').scan.result?.abw).toBe(17.2)
+    expect(m.scan.result?.abw).toBe(17.2)
+    expect(m.scan.canFix).toBe(true)
 
-    for (const call of [() => s.ponds('worker'), () => s.pondDetail('worker', 'p-f10'), () => s.pondScans('worker', 'p-f10'), () => s.teamToday('worker')]) {
+    expect(s.ponds('worker').ponds.map((p) => p.zone)).toEqual(Array(10).fill('F'))
+    const d = s.pondDetail('worker', 'p-f10')
+    expect(d.stocking.count).toBeNull()
+    expect(d.tonnesNow).toBeNull()
+    expect(s.pondScans('worker', 'p-f10').pond.code).toBe('F10')
+    for (const call of [() => s.pondDetail('worker', 'p-a01'), () => s.pondScans('worker', 'p-a01'), () => s.teamToday('worker'), () => s.stocking('worker', 'p-f10')]) {
       expect(call).toThrow(/not_allowed/)
     }
     // Not their pond: a worker scans only what the owner gave them.
     expect(() => s.upload('worker', 'p-a01', yor, 'image/jpeg')).toThrow(/not_allowed/)
+  })
+
+  it('with seePonds off, a worker gets the dots and no number, and no pond page', () => {
+    const s = new Store()
+    s.patchPermissions('owner', 'm-ek', { key: 'seePonds', value: false })
+    const { scan } = s.upload('worker', 'p-f10', yor, 'image/jpeg')
+    const m = s.measure('worker', scan.id, FIXED, 'net-82')
+    expect(m.scan.result).toBeNull()
+    expect(m.scan.found).toHaveLength(64)
+    expect(m.scan.canFix).toBe(false)
+    expect(s.measure('owner', scan.id, FIXED, 'net-82').scan.result?.abw).toBe(17.2)
+    for (const call of [() => s.ponds('worker'), () => s.pondDetail('worker', 'p-f10'), () => s.pondScans('worker', 'p-f10')]) {
+      expect(call).toThrow(/not_allowed/)
+    }
   })
 
   it('holds the size-showing switches off for a worker, whatever is stored', () => {

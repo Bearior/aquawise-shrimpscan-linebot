@@ -77,7 +77,8 @@
   position: relative;
   margin: -16px -16px 0;
   padding: 26px 18px 72px;
-  background: linear-gradient(180deg, #004aad 0%, #1a66c7 70%, #2c74cf 100%);
+  /* The last 64px end in the page colour under the fade too: at a phone's 2.75x the band's half-pixel bottom row showed its blue as a line (Bear, 2026-10-31). */
+  background: linear-gradient(180deg, #004aad 0%, #1a66c7 50%, #2c74cf calc(100% - 64px), #f6f6fb 100%);
   color: #fff;
   overflow: hidden;
 }
@@ -147,6 +148,8 @@
 }
 .band + * {
   margin-top: -40px;
+  /* Positioned like the band, so the card that rides up over the fade paints on top of it. */
+  position: relative;
 }
 
 /* ---------- รายบ่อ แบบ A ---------- */

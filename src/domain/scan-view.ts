@@ -13,7 +13,7 @@
 
 import type { Pt, Scan, ScanResult } from '../contract/types.js'
 import type { MemberRow, ScanRow } from '../data/types.js'
-import { effective } from './permissions.js'
+import { effective, seesPonds } from './permissions.js'
 import { canvasToPhoto, ringToEllipse, ringToPoints } from './rim-geometry.js'
 
 /** line-bot RIM_ADJUSTMENTS_MAX: free re-measures of one photo (a rim moved or another ยอ). */
@@ -142,12 +142,12 @@ export function mayMeasure(me: MemberRow, row: Pick<ScanRow, 'lineUserId'>): boo
   return row.lineUserId === me.lineUserId || (me.perms ?? effective(me.role)).measureInbox
 }
 
-/** A result's rim is fixed by its measurer (the sender) or, with editOthers, by an owner or manager; never by a worker. */
+/** A result's rim is fixed by its measurer (the sender) or, with editOthers, by an owner or manager; a worker fixes their own only while they see results. */
 export function mayFix(me: MemberRow, row: Pick<ScanRow, 'lineUserId'>): boolean {
-  return me.role !== 'worker' && (row.lineUserId === me.lineUserId || (me.perms ?? effective(me.role)).editOthers)
+  return seesPonds(me) && (row.lineUserId === me.lineUserId || (me.perms ?? effective(me.role)).editOthers)
 }
 
-/** A worker sees no number: their scan carries `found` and never `result`. */
+/** A worker who does not see their ponds gets `found` (the dots) and never `result`. */
 export function scanFor(me: MemberRow, scan: Scan): Scan {
-  return me.role === 'worker' ? { ...scan, result: null } : scan
+  return seesPonds(me) ? scan : { ...scan, result: null }
 }

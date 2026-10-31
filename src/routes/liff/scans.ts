@@ -26,6 +26,7 @@ import type { SaveResponse, Scan, ScanCreateResponse, ScanResult } from '../../c
 import { ApiError, requireFarm } from '../../data/context.js'
 import type { FarmRow, MemberRow, PondRow, Repos, ScanRow } from '../../data/types.js'
 import { bangkokDay, daysBetween } from '../../domain/farm.js'
+import { seesPonds } from '../../domain/permissions.js'
 import { personName } from '../../domain/names.js'
 import { netView, pondNet } from '../../domain/nets.js'
 import { CENTRED_RING, ringToPoints } from '../../domain/rim-geometry.js'
@@ -60,7 +61,7 @@ function previousOf(saved: ScanRow[], row: ScanRow): ScanResult['previous'] {
   return p ? { abw: p.abw!, date: p.sampleDate! } : null
 }
 
-/** The scan as `me` reads it: the result once measured (a worker gets only the dots). */
+/** The scan as `me` reads it: the result once measured (a worker who does not see their ponds gets only the dots). */
 export async function scanView(repos: Repos, farmId: string, row: ScanRow, me: MemberRow): Promise<Scan> {
   const measured = isMeasured(row)
   const [ponds, nets, members, urls, saved] = await Promise.all([
@@ -135,20 +136,21 @@ export async function mirrorGrowth(repos: Repos, farm: FarmRow, row: ScanRow, da
   }
 }
 
-/** The save's answer: how far the person is today, and (not for a worker) when the pond reaches size. */
+/** The save's answer: how far the person is today, and (for anyone who sees the pond's numbers) when it reaches size. */
 async function saveAnswer(repos: Repos, farm: FarmRow, me: MemberRow, pondId: string, today: string): Promise<SaveResponse> {
   const view = await farmView(repos, farm, me)
   const pond = view.ponds.find((p) => p.id === pondId)
   const live = new Set(view.ponds.map((p) => p.id))
   const mine = me.role === 'owner' ? [...live] : me.pondIds.filter((id) => live.has(id))
   const done = new Set((await repos.scans.savedOfFarm(farm.id, today)).filter((s) => s.sampleDate === today).map((s) => s.pondId))
-  const scans = pond && me.role !== 'worker' ? (await repos.scans.savedOfPond(pond.id)).filter((s) => s.abw !== null && s.perKg !== null) : []
+  const sees = seesPonds(me)
+  const scans = pond && sees ? (await repos.scans.savedOfPond(pond.id)).filter((s) => s.abw !== null && s.perKg !== null) : []
   return {
     pondId,
     pondCode: pond?.code ?? '',
     doneToday: mine.filter((id) => done.has(id)).length,
     mineTotal: mine.length,
-    reachOn: pond && me.role !== 'worker' ? tileFor(view, pond, scans).reachOn : null,
+    reachOn: pond && sees ? tileFor(view, pond, scans).reachOn : null,
   }
 }
 

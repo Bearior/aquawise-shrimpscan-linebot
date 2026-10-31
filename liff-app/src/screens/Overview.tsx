@@ -5,7 +5,7 @@ import type { Overview as OverviewData, QueueRow } from '@/api/types'
 import { Page } from '@/components/Page'
 import { Icon } from '@/components/Icon'
 import { WatchList } from '@/components/WatchList'
-import { HomeBand } from '@/components/band'
+import { Band } from '@/components/band'
 import { Chip, ErrorState, InlineError, MBtn, Skeleton } from '@/components/ui'
 import { QueueChart } from '@/components/charts'
 import { zoneLabel } from '@/lib/farm-layout'
@@ -96,8 +96,9 @@ export default function Overview() {
   const canPrint = session.permissions.printSheet
 
   const band = (
-    <HomeBand
-      farmName={session.farm!.name}
+    <Band
+      art="shrimp"
+      title={session.farm!.name}
       sub={`${fmtWeekday(session.today)} · ${session.farm!.pondCount} บ่อ`}
       userName={session.user.name}
       onProfile={() => navigate(P.settings)}

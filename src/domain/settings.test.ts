@@ -41,4 +41,9 @@ describe('permsOf', () => {
   it('a person with nothing stored has the role’s defaults', () => {
     expect(permsOf(settingsFromJson({}), member('manager', 'm9'))).toEqual(DEFAULTS.manager)
   })
+
+  it('a switch set stored before seePonds existed reads seePonds on', () => {
+    const old = { editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, remindMissing: false }
+    expect(permsOf(settingsFromJson({ perms: { m1: old } }), member('worker'))).toEqual({ ...old, seePonds: true })
+  })
 })

@@ -1,8 +1,9 @@
 /**
- * The owner's pond pages: GET /ponds (O7), GET /ponds/:id (O8),
+ * The pond pages: GET /ponds (O7), GET /ponds/:id (O8),
  * GET /ponds/:id/scans (history), GET|PUT /ponds/:id/stocking and
- * PUT /ponds/:id/net. A worker sees no number: every one of these is 403
- * not_allowed for a worker.
+ * PUT /ponds/:id/net. A worker reads the first three for the ponds they look
+ * after while seePonds is on (Bear, 2026-10-31), without the stocking or the
+ * tonnes; every other pond, and every write, is 403 not_allowed for a worker.
  */
 
 import { Router } from 'express'
@@ -11,6 +12,7 @@ import { TH } from '../../copy/th.js'
 import { ApiError, requireFarm } from '../../data/context.js'
 import type { CycleRow, FarmRow, MemberRow, NetRow, PondRow, Repos, ScanRow } from '../../data/types.js'
 import { addDays, bangkokDay, daysBetween, isDay } from '../../domain/farm.js'
+import { seesPonds } from '../../domain/permissions.js'
 import { mayFix, shrimpSizes } from '../../domain/scan-view.js'
 import { tileOf } from '../../domain/tiles.js'
 import { userTag } from '../liff-me.js'
@@ -24,6 +26,11 @@ const round1 = (n: number) => Math.round(n * 10) / 10
 
 export function noWorker(me: MemberRow): void {
   if (me.role === 'worker') throw new ApiError(403, 'not_allowed')
+}
+
+/** The pond pages are read by an owner, a manager, and a worker while seePonds is on. */
+function readsPonds(me: MemberRow): void {
+  if (!seesPonds(me)) throw new ApiError(403, 'not_allowed')
 }
 
 /** What every tile of the farm needs, read once. */
@@ -53,6 +60,18 @@ export async function farmView(repos: Repos, farm: FarmRow, me: MemberRow): Prom
 export function pondOf(ponds: PondRow[], id: string): PondRow {
   const p = ponds.find((x) => x.id === id)
   if (!p) throw new ApiError(404, 'not_found')
+  return p
+}
+
+/** The farm as `me` reads it on the pond pages: every pond, or only a worker's own. */
+function readView(view: FarmView): FarmView {
+  return view.me.role === 'worker' ? { ...view, ponds: view.ponds.filter((p) => view.me.pondIds.includes(p.id)) } : view
+}
+
+/** The pond with this id in a read view; the farm's pond someone else looks after is not_allowed. */
+function readPond(view: FarmView, all: PondRow[], id: string): PondRow {
+  const p = pondOf(all, id)
+  if (!view.ponds.includes(p)) throw new ApiError(403, 'not_allowed')
   return p
 }
 
@@ -184,8 +203,8 @@ export function pondsRouter(getRepos: GetRepos): Router {
     '/ponds',
     handle(getRepos, async ({ repos, ctx }): Promise<PondsResponse> => {
       const { farm, me } = requireFarm(ctx)
-      noWorker(me)
-      const view = await farmView(repos, farm, me)
+      readsPonds(me)
+      const view = readView(await farmView(repos, farm, me))
       const [ponds, settings] = await Promise.all([farmTiles(repos, view), repos.settings.read(farm.id)])
       const zones: ZoneSummary[] = [...new Set(ponds.map((t) => t.zone))].map((zone) => {
         const zt = ponds.filter((t) => t.zone === zone)
@@ -199,16 +218,19 @@ export function pondsRouter(getRepos: GetRepos): Router {
     '/ponds/:id',
     handle(getRepos, async ({ req, repos, ctx }): Promise<PondDetail> => {
       const { farm, me } = requireFarm(ctx)
-      noWorker(me)
-      const view = await farmView(repos, farm, me)
-      const pond = pondOf(view.ponds, req.params.id!)
+      readsPonds(me)
+      const all = await farmView(repos, farm, me)
+      const view = readView(all)
+      const pond = readPond(view, all.ponds, req.params.id!)
       const scans = await savedScans(repos, pond.id)
       const tile = tileFor(view, pond, scans)
       const cycle = view.cycles.get(pond.id)
       const growth = growthOf(scans, cycle?.stockedOn ?? null)
       const latest = scans[0] ? (await summaries(repos, view, scans.slice(0, 2)))[0]! : null
       const noteText = scans[0] ? lastFlag(scans[0].flags, 'note:') : null
-      const stocking = stockingOf(cycle)
+      // A worker sees the pond's age (from the stocking day), not how many went in or the tonnes.
+      const worker = me.role === 'worker'
+      const stocking = worker ? { ...stockingOf(cycle), count: null, survival: null } : stockingOf(cycle)
       const idx = view.ponds.indexOf(pond)
       const prev = view.ponds[idx - 1] ?? null
       const next = view.ponds[idx + 1] ?? null
@@ -236,9 +258,10 @@ export function pondsRouter(getRepos: GetRepos): Router {
     '/ponds/:id/scans',
     handle(getRepos, async ({ req, repos, ctx }) => {
       const { farm, me } = requireFarm(ctx)
-      noWorker(me)
-      const view = await farmView(repos, farm, me)
-      const pond = pondOf(view.ponds, req.params.id!)
+      readsPonds(me)
+      const all = await farmView(repos, farm, me)
+      const view = readView(all)
+      const pond = readPond(view, all.ponds, req.params.id!)
       const scans = await savedScans(repos, pond.id)
       return { pond: tileFor(view, pond, scans), scans: await summaries(repos, view, scans) }
     }),

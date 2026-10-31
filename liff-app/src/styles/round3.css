@@ -399,3 +399,24 @@
   font-size: 15px;
   color: var(--ink3);
 }
+
+/* ---------- the band on every tab (Bear, 2026-10-31) ---------- */
+/* Each drawing's own shape: the pond is wide and low, the camera nearly square. */
+.band.art-pond .band-art {
+  right: 8px;
+  top: 14px;
+  height: 104px;
+}
+.band.art-camera .band-art {
+  right: 56px;
+  top: 6px;
+  height: 124px;
+}
+span.band-me {
+  cursor: default;
+}
+
+/* A worker's nav has two tabs. */
+.scr .vnav.n2 {
+  grid-template-columns: repeat(2, 1fr);
+}

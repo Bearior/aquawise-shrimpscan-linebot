@@ -223,8 +223,11 @@ describe('one day of the whole app', () => {
     const { go, hits } = day(repos)
     for (const [m, p, b] of [
       ['get', '/overview'],
-      ['get', '/ponds'],
-      ['get', '/ponds/p1'],
+      // Their own pond reads (seePonds); someone else's pond and the stocking page do not.
+      ['get', '/ponds/p2'],
+      ['get', '/ponds/p2/scans'],
+      ['get', '/ponds/p1/stocking'],
+      ['put', '/ponds/p1/stocking', { stockedOn: null, count: null, survival: null }],
       ['get', '/team/today'],
       ['get', '/print/farm'],
       ['post', '/ponds', { codes: ['A09'] }],
@@ -236,6 +239,9 @@ describe('one day of the whole app', () => {
       ['patch', '/settings', { notify: { photoIn: false } }],
     ] as const) await go(WORKER, m, p, b)
     expect(hits.filter((h) => h.status !== 403)).toEqual([])
+    hits.length = 0
+    for (const p of ['/ponds', '/ponds/p1', '/ponds/p1/scans']) await go(WORKER, 'get', p)
+    expect(hits.filter((h) => h.status !== 200)).toEqual([])
     hits.length = 0
     for (const [m, p, b] of [
       ['post', '/ponds', { codes: ['A09'] }],

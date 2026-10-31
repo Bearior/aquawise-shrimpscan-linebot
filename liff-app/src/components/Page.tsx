@@ -6,13 +6,19 @@ import { useStepMotion } from '@/lib/motion'
 import { useSession, useToast } from '@/session'
 import { P } from '@/routes'
 
-export type NavKey = 'overview' | 'ponds' | 'team' | 'people'
+export type NavKey = 'overview' | 'ponds' | 'team' | 'people' | 'today'
 
 const NAV: [NavKey, IconName, string, string][] = [
   ['overview', 'grid', 'ภาพรวม', P.overview],
   ['ponds', 'chart', 'รายบ่อ', P.ponds],
   ['team', 'list', 'สแกนวันนี้', P.team],
   ['people', 'users', 'คนในฟาร์ม', P.people],
+]
+
+/** A worker's two tabs, while they see their ponds (Bear, 2026-10-31). */
+const WORKER_NAV: [NavKey, IconName, string, string][] = [
+  ['today', 'list', 'สแกนวันนี้', P.today],
+  ['ponds', 'chart', 'บ่อที่ดูแล', P.ponds],
 ]
 
 interface PageProps {
@@ -112,8 +118,8 @@ export function Page({ title, sub, back, close, step, foot, two, nav, top, over,
       </main>
       {foot ? <div className={`vf${two ? ' two' : ''}`}>{foot}</div> : null}
       {nav ? (
-        <nav className="vnav" aria-label="เมนูหลัก">
-          {NAV.map(([k, ic, label, path]) => (
+        <nav className={`vnav${session.role === 'worker' ? ' n2' : ''}`} aria-label="เมนูหลัก">
+          {(session.role === 'worker' ? WORKER_NAV : NAV).map(([k, ic, label, path]) => (
             <button key={k} type="button" className={k === nav ? 'on' : ''} aria-current={k === nav ? 'page' : undefined} onClick={() => navigate(path)}>
               <Icon n={ic} />
               {label}

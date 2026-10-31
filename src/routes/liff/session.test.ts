@@ -65,7 +65,7 @@ describe('GET /session', () => {
     const res = await as(NEW, repos).get('/session')
     expect(res.status).toBe(200)
     expect(res.body).toMatchObject({ farm: null, role: null, candidate: null, pondIds: [], creditsLeft: 0 })
-    expect(res.body.permissions).toEqual({ editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, remindMissing: true })
+    expect(res.body.permissions).toEqual({ editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, seePonds: true, remindMissing: true })
     expect(res.body.today).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(repos.state.farms).toHaveLength(0)
     expect(repos.state.lineUsers).toHaveLength(0)
@@ -102,7 +102,7 @@ describe('GET /session', () => {
     expect(res.status).toBe(200)
     expect(res.body.role).toBe('worker')
     expect(res.body.pondIds).toEqual(['p1'])
-    expect(res.body.permissions).toEqual({ editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, remindMissing: true })
+    expect(res.body.permissions).toEqual({ editOthers: false, measureInbox: false, farmOverview: false, printSheet: false, seePonds: true, remindMissing: true })
   })
 })
 
