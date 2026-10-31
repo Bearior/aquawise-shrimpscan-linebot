@@ -401,16 +401,16 @@
 }
 
 /* ---------- the band on every tab (Bear, 2026-10-31) ---------- */
-/* Each drawing's own shape: the pond is wide and low, the camera nearly square. */
+/* Each drawing's own shape: the pond is wide and low, the ยอ taller with its rope running off the band's top. */
 .band.art-pond .band-art {
   right: 8px;
   top: 14px;
   height: 104px;
 }
-.band.art-camera .band-art {
-  right: 56px;
-  top: 6px;
-  height: 124px;
+.band.art-yor .band-art {
+  right: 54px;
+  top: -14px;
+  height: 146px;
 }
 span.band-me {
   cursor: default;

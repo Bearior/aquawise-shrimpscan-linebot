@@ -22,7 +22,7 @@ export default function Today() {
   const owner = session.farm!.ownerName
   const sees = session.permissions.seePonds
   const nav = sees ? ('today' as const) : undefined
-  const band = <Band art="camera" title="บ่อที่ต้องสแกนวันนี้" sub={`${session.user.name} · ${fmtWeekday(session.today)}`} userName={session.user.name} />
+  const band = <Band art="yor" title="บ่อที่ต้องสแกนวันนี้" sub={`${session.user.name} · ${fmtWeekday(session.today)}`} userName={session.user.name} />
 
   if (!r.data) {
     return (

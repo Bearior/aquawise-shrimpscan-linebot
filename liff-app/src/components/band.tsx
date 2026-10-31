@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import cameraBand from '@/assets/band/camera-band.webp'
 import pondBand from '@/assets/band/pond-band.webp'
 import shrimpBand from '@/assets/band/shrimp-band.webp'
+import yorBand from '@/assets/band/yor-band.webp'
 import { useLiff } from '@/lib/liff/context'
 
-/** The line art top right: one drawing a tab, all in the shrimp's one blue (the pond and the camera made by Codex's image_gen from it). */
-const ART = { shrimp: shrimpBand, pond: pondBand, camera: cameraBand } as const
+/** The line art top right: one drawing a tab, all in the shrimp's one blue (the pond and the ยอ made by Codex's image_gen from it). */
+const ART = { shrimp: shrimpBand, pond: pondBand, yor: yorBand } as const
 export type BandArt = keyof typeof ART
 
 /**
@@ -38,9 +38,10 @@ function ProfileButton({ name, onClick }: { name: string; onClick?: () => void }
 /**
  * The tab pages' header band, built the way น้องน้ำ's home band is: AquaWise
  * blue with line art top right (the shrimp on ภาพรวม, a pond on รายบ่อ, a
- * camera on สแกนวันนี้: Bear, 2026-10-31), the title and one line under it,
- * the profile picture on the right, and the blue dissolving into the page
- * over its last 64px. It scrolls with the page. No bell: the OA has no
+ * ยอ lifted with shrimp in it on สแกนวันนี้, the moment a scan is taken; it
+ * replaced a camera Bear did not like: Bear, 2026-10-31), the title and one
+ * line under it, the profile picture on the right, and the blue dissolving
+ * into the page over its last 64px. It scrolls with the page. No bell: the OA has no
  * notifications of its own yet (Bear, 2026-10-30).
  */
 export function Band({ art, title, sub, userName, onProfile }: { art: BandArt; title: string; sub: string; userName: string; onProfile?: () => void }) {

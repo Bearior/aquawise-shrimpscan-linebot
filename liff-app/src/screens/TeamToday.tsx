@@ -50,7 +50,7 @@ export default function TeamToday() {
   const [open, setOpen] = useState<Set<string>>(new Set())
   const owner = session.role === 'owner'
   const band = (
-    <Band art="camera" title="สแกนวันนี้" sub={fmtWeekday(session.today)} userName={session.user.name} onProfile={() => navigate(P.settings)} />
+    <Band art="yor" title="สแกนวันนี้" sub={fmtWeekday(session.today)} userName={session.user.name} onProfile={() => navigate(P.settings)} />
   )
 
   if (!r.data) {
